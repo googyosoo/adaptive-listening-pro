@@ -496,6 +496,7 @@
 
       const [aiMaleVoice, setAiMaleVoice] = useState(() => localStorage.getItem('ai_male_voice') || 'Puck');
       const [aiFemaleVoice, setAiFemaleVoice] = useState(() => localStorage.getItem('ai_female_voice') || 'Aoede');
+      const [aiKoreanVoice, setAiKoreanVoice] = useState(() => localStorage.getItem('ai_korean_voice') || 'auto');
       const [showVoiceModal, setShowVoiceModal] = useState(false);
 
       // STT (Shadowing) 상태
@@ -597,28 +598,54 @@
         return matched[0];
       };
 
-      // 한국어 발문 안내 전용 보이스 탐색기 (한국어 음성 모드 엄격 적용)
-      const findKoreanVoice = (voices) => {
+      // 초고음질 자연스러운 한국어 발문 보이스 탐색기 (기계음 원천 차단 및 신경망 보이스 우선 선택)
+      const findKoreanVoice = (voices, preferredVoiceName = 'auto') => {
         if (!voices || voices.length === 0) return null;
-        // 1. ko-KR 완벽 일치 보이스
-        const exactKo = voices.find(v => (v.lang || '').toLowerCase().replace('_', '-') === 'ko-kr');
-        if (exactKo) return exactKo;
 
-        // 2. ko 로 시작하는 보이스 (ko, ko-KP 등)
-        const startKo = voices.find(v => (v.lang || '').toLowerCase().startsWith('ko'));
-        if (startKo) return startKo;
-
-        // 3. 음성 이름에 한국어 관련 키워드가 포함된 보이스
-        const nameKo = voices.find(v => {
+        const koVoices = voices.filter(v => {
+          const l = (v.lang || '').toLowerCase().replace('_', '-');
           const n = (v.name || '').toLowerCase();
-          return n.includes('korean') || n.includes('한국') || n.includes('yuna') || n.includes('heami') || n.includes('sunhi') || n.includes('sehyun') || n.includes('insoo');
+          return l.startsWith('ko') || n.includes('korean') || n.includes('한국');
         });
-        if (nameKo) return nameKo;
 
-        return null;
+        if (koVoices.length === 0) return null;
+
+        // 사용자가 특정 한국어 보이스를 지정한 경우
+        if (preferredVoiceName && preferredVoiceName !== 'auto') {
+          const matched = koVoices.find(v => v.name === preferredVoiceName);
+          if (matched) return matched;
+        }
+
+        // 1순위: 최신 고음질 온라인 자연스러운 신경망 보이스 (Microsoft SunHi Online, InJoon Online, Neural)
+        const naturalVoice = koVoices.find(v => {
+          const n = v.name.toLowerCase();
+          return (n.includes('natural') || n.includes('online') || n.includes('neural')) && (n.includes('sunhi') || n.includes('injoon') || n.includes('korean'));
+        });
+        if (naturalVoice) return naturalVoice;
+
+        // 2순위: 'Google 한국의' (Chrome 브라우저 전용 부드러운 고음질 신경망 보이스)
+        const googleKo = koVoices.find(v => {
+          const n = v.name.toLowerCase();
+          return n.includes('google') || n.includes('한국의');
+        });
+        if (googleKo) return googleKo;
+
+        // 3순위: Apple/macOS/iOS 고품질 한국어 (Yuna 등)
+        const yunaVoice = koVoices.find(v => v.name.toLowerCase().includes('yuna'));
+        if (yunaVoice) return yunaVoice;
+
+        // 4순위: Samsung/Android 고품질 음성 (Sehyun, Insoo 등)
+        const sehyunVoice = koVoices.find(v => v.name.toLowerCase().includes('sehyun') || v.name.toLowerCase().includes('insoo'));
+        if (sehyunVoice) return sehyunVoice;
+
+        // 5순위: 삐걱거리는 구형 Heami Desktop을 배제한 다른 한국어 음성
+        const nonHeami = koVoices.find(v => !v.name.toLowerCase().includes('heami'));
+        if (nonHeami) return nonHeami;
+
+        return koVoices[0];
       };
 
-      // 실전 수능 방송 시퀀스: [한국어 발문 안내] -> [수능 딩동댕 차임벨] -> [원어민 남-녀 본문 대화]
+      // 실전 수능 방송 시퀀스: [자연스러운 한국어 발문 안내] -> [수능 딩동댕 차임벨] -> [원어민 남-녀 본문 대화]
       const playSpeech = async (item, questionNumber = 1, isPauseToggle = false) => {
         if (!synthRef.current) { showToast("이 브라우저는 음성 합성을 지원하지 않습니다.", "error"); return; }
         
@@ -651,19 +678,27 @@
         let voices = synthRef.current.getVoices();
         if (voices.length === 0) voices = window.speechSynthesis.getVoices();
 
-        // 1단계: 실전 시험 중일 때만 한국어 발문 음성 안내 및 차임벨 재생 (한국어 음성 모드 한국어 보이스 강제 적용)
+        // 1단계: 실전 시험 중일 때만 한국어 발문 음성 안내 및 차임벨 재생 (신경망 자연스러운 한국어 보이스 + 아나운서 호흡)
         if (examState === 'taking') {
           setPlayingStage('narration');
-          const korVoice = findKoreanVoice(voices);
+          const korVoice = findKoreanVoice(voices, aiKoreanVoice);
           
-          const cleanQuestion = item.mcQuestion.replace(/\[.*?\]/g, '').trim();
-          const introText = `${questionNumber}번. ${cleanQuestion}`;
+          let cleanQuestion = item.mcQuestion.replace(/\[.*?\]/g, '').trim();
+          // 아나운서 호흡(청킹)을 위한 자연스러운 쉼표 및 띄어쓰기 정밀 가공
+          cleanQuestion = cleanQuestion
+            .replace(/다음을\s*듣고\s*,?/g, '다음을 듣고, ')
+            .replace(/대화를\s*듣고\s*,?/g, '대화를 듣고, ')
+            .replace(/,\s*가장/g, ', 가장')
+            .replace(/알맞은\s*것을/g, '가장 적절한 것을');
+
+          const introText = `${questionNumber}번, ${cleanQuestion}`;
           
           await new Promise((resolve) => {
             const introUtter = new SpeechSynthesisUtterance(introText);
             introUtter.lang = 'ko-KR'; // 한국어 음성 모드
-            introUtter.rate = 1.0;     // 명확하고 또렷한 수능 방송 낭독 속도
-            introUtter.pitch = 1.0;
+            // 기계음을 없애고 인간 아나운서의 차분하고 부드러운 낭독 톤 구현
+            introUtter.rate = 0.92;     // 살짝 여유 있고 안정적인 방송 낭독 속도 (기계음 방지)
+            introUtter.pitch = 1.02;    // 또렷하고 생동감 있는 자연스러운 음조
             if (korVoice) introUtter.voice = korVoice;
             introUtter.onend = resolve;
             introUtter.onerror = (e) => {
@@ -1697,13 +1732,59 @@ ${feedbackList.slice(-3).join('\n')}
                   </div>
                 </div>
 
+                {/* 한국어 시험 발문 안내방송 음성 선택 및 미리듣기 */}
+                <div className="space-y-2 pt-2 border-t-2 border-dashed border-gray-300">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-black text-black flex items-center gap-1">
+                      <span>📢 한국어 시험 발문 안내방송 음성:</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        let voices = synthRef.current.getVoices();
+                        const korVoice = findKoreanVoice(voices, aiKoreanVoice);
+                        const sampleText = "1번, 다음을 듣고, 남자가 하는 말의 목적으로 가장 적절한 것을 고르시오.";
+                        const utter = new SpeechSynthesisUtterance(sampleText);
+                        utter.lang = 'ko-KR';
+                        utter.rate = 0.92;
+                        utter.pitch = 1.02;
+                        if (korVoice) utter.voice = korVoice;
+                        synthRef.current.cancel();
+                        synthRef.current.speak(utter);
+                      }}
+                      className="text-xs bg-[#00C4B3] text-black font-black px-2.5 py-1 border border-black shadow-[2px_2px_0_0_#000] hover:bg-teal-300"
+                    >
+                      ▶ 안내방송 샘플 미리듣기
+                    </button>
+                  </div>
+
+                  <div className="p-3 bg-gray-50 border-2 border-black space-y-2">
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={aiKoreanVoice}
+                        onChange={(e) => setAiKoreanVoice(e.target.value)}
+                        className="w-full border-2 border-black p-2 text-xs font-bold bg-white outline-none"
+                      >
+                        <option value="auto">🌟 [추천] 초고음질 자연스러운 신경망 보이스 자동 탐색 (Google / Natural / SunHi 우선)</option>
+                        {synthRef.current?.getVoices().filter(v => (v.lang || '').toLowerCase().startsWith('ko') || (v.name || '').includes('Korean') || (v.name || '').includes('한국')).map((v, idx) => (
+                          <option key={idx} value={v.name}>{v.name} ({v.lang})</option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-gray-600 font-bold leading-relaxed">
+                      ※ Windows 기본 음성(Heami) 대신 <strong>Google 한국의</strong> 또는 <strong>Microsoft SunHi / InJoon Online (Natural)</strong> 신경망 보이스와 아나운서 호흡(rate 0.92, pitch 1.02)을 적용하여 기계음 없이 사람처럼 읽어줍니다.
+                    </p>
+                  </div>
+                </div>
+
                 <div className="flex gap-2 justify-end pt-3 border-t-2 border-black">
                   <button
                     type="button"
                     onClick={() => {
                       localStorage.setItem('ai_male_voice', aiMaleVoice);
                       localStorage.setItem('ai_female_voice', aiFemaleVoice);
-                      showToast(`남성: ${aiMaleVoice}, 여성: ${aiFemaleVoice} 음성으로 설정되었습니다!`, "success");
+                      localStorage.setItem('ai_korean_voice', aiKoreanVoice);
+                      showToast(`음성 설정(남: ${aiMaleVoice}, 여: ${aiFemaleVoice}, 한국어: ${aiKoreanVoice === 'auto' ? '신경망 자동' : aiKoreanVoice})이 저장되었습니다!`, "success");
                       setShowVoiceModal(false);
                     }}
                     className="text-xs font-black px-5 py-2.5 border-2 border-black bg-[#FFD600] shadow-[3px_3px_0_0_#000] active:translate-x-0.5 active:translate-y-0.5"
