@@ -478,6 +478,26 @@
       const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || '');
       const [showKeyModal, setShowKeyModal] = useState(false);
 
+      // Google AI Studio 공식 음성 라인업 및 보이스 선택 상태
+      const GOOGLE_AI_VOICES = {
+        male: [
+          { id: 'Puck', name: 'Puck (퍽)', desc: '자연스럽고 생생한 미국식 청년/남학생 톤 (활기참)', pitch: 0.82, rate: 0.98 },
+          { id: 'Charon', name: 'Charon (카론)', desc: '중후하고 신뢰감 있는 깊은 남성 톤 (교사/전문가/안내)', pitch: 0.72, rate: 0.95 },
+          { id: 'Fenrir', name: 'Fenrir (펜리르)', desc: '에너지 넘치고 자모음 발음이 또렷한 남성 톤', pitch: 0.86, rate: 1.02 },
+          { id: 'Orus', name: 'Orus (오루스)', desc: '지적이고 차분한 학술/뉴스 앵커 톤', pitch: 0.78, rate: 0.96 }
+        ],
+        female: [
+          { id: 'Aoede', name: 'Aoede (아오이데)', desc: '맑고 친절하며 또렷한 미국식 여성 톤 (여학생/직원)', pitch: 1.18, rate: 1.0 },
+          { id: 'Kore', name: 'Kore (코레)', desc: '부드럽고 안정감 있는 성인 여성 톤 (어머니/상담사)', pitch: 1.08, rate: 0.97 },
+          { id: 'Leda', name: 'Leda (레다)', desc: '명확하고 전달력 높은 지적인 아나운서 스타일', pitch: 1.25, rate: 1.02 },
+          { id: 'Mimosa', name: 'Mimosa (미모사)', desc: '상냥하고 따뜻한 일상 회화 여성 톤', pitch: 1.12, rate: 0.98 }
+        ]
+      };
+
+      const [aiMaleVoice, setAiMaleVoice] = useState(() => localStorage.getItem('ai_male_voice') || 'Puck');
+      const [aiFemaleVoice, setAiFemaleVoice] = useState(() => localStorage.getItem('ai_female_voice') || 'Aoede');
+      const [showVoiceModal, setShowVoiceModal] = useState(false);
+
       // STT (Shadowing) 상태
       const [recordingId, setRecordingId] = useState(null);
       const [recognizedTextMap, setRecognizedTextMap] = useState({});
@@ -545,7 +565,7 @@
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
       };
 
-      // 크로스 플랫폼 안전 보이스 탐색기 (UK 누락 시 US로 자동 폴백)
+      // 크로스 플랫폼 안전 보이스 탐색기 (남/녀 보이스 완벽 분리 및 Google AI Studio 톤 매핑)
       const findSafeVoice = (voices, langCode, isFemale, isMale) => {
         let matched = voices.filter(v => v.lang.toLowerCase().replace('_', '-').includes(langCode.toLowerCase()));
         
@@ -565,8 +585,15 @@
           return n.includes('male') || ['david', 'alex', 'daniel', 'fred', 'mark', 'james', 'guy', 'arthur', 'aaron', 'brian', 'george', 'minsu'].some(k => n.includes(k)); 
         };
 
-        if (isFemale) return matched.find(v => isVoiceFemale(v.name)) || matched[0];
-        if (isMale) return matched.find(v => isVoiceMale(v.name)) || matched[0];
+        const femaleVoices = matched.filter(v => isVoiceFemale(v.name));
+        const maleVoices = matched.filter(v => isVoiceMale(v.name));
+
+        if (isFemale) {
+          return femaleVoices[0] || (maleVoices.length > 1 ? maleVoices[1] : matched[0]);
+        }
+        if (isMale) {
+          return maleVoices[0] || (femaleVoices.length > 1 ? femaleVoices[1] : matched[0]);
+        }
         return matched[0];
       };
 
@@ -591,7 +618,7 @@
         return null;
       };
 
-      // 실전 수능 방송 시퀀스: [한국어 발문 안내] -> [수능 딩동댕 차임벨] -> [원어민 본문 대화]
+      // 실전 수능 방송 시퀀스: [한국어 발문 안내] -> [수능 딩동댕 차임벨] -> [원어민 남-녀 본문 대화]
       const playSpeech = async (item, questionNumber = 1, isPauseToggle = false) => {
         if (!synthRef.current) { showToast("이 브라우저는 음성 합성을 지원하지 않습니다.", "error"); return; }
         
@@ -654,29 +681,59 @@
           if (sequenceCancelledRef.current) return;
         }
 
-        // 3단계: 원어민 본문 대화/담화 재생
+        // 3단계: 원어민 본문 대화/담화 재생 (남-녀 2인 대화 엄격 구분)
         setPlayingStage('body');
         const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
         const maleVoice = findSafeVoice(voices, langCode, false, true);
         const femaleVoice = findSafeVoice(voices, langCode, true, false);
 
+        // Google AI Studio 보이스 프로필 로드
+        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[0];
+        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[0];
+
         const lines = item.transcript.split('\n').filter(l => l.trim().length > 0);
+        let currentSpeaker = null;
 
         lines.forEach((line, idx) => {
           const speakerMatch = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:/i);
-          let isMale = false; let isFemale = false; let cleanText = line;
+          let isMale = false; 
+          let isFemale = false; 
+          let cleanText = line;
+
           if (speakerMatch) {
-              const speakerLabel = speakerMatch[1].toLowerCase();
-              if (speakerLabel.startsWith('m') || speakerLabel.startsWith('남')) isMale = true;
-              else if (speakerLabel.startsWith('w') || speakerLabel.startsWith('여')) isFemale = true;
-              cleanText = line.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '').trim();
+            const speakerLabel = speakerMatch[1].toLowerCase();
+            if (speakerLabel.startsWith('m') || speakerLabel.startsWith('남')) {
+              isMale = true;
+              currentSpeaker = 'M';
+            } else {
+              isFemale = true;
+              currentSpeaker = 'W';
+            }
+            cleanText = line.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '').trim();
+          } else {
+            // 2인 대화에서 화자 태그가 누락되었을 경우 남-녀 교차(Alternating) 엄격 적용
+            if (currentSpeaker === 'M') {
+              isFemale = true;
+              currentSpeaker = 'W';
+            } else {
+              isMale = true;
+              currentSpeaker = 'M';
+            }
           }
 
           const utter = new SpeechSynthesisUtterance(cleanText);
-          utter.lang = langCode; utter.rate = playbackRate; 
-          if (isMale) { utter.voice = maleVoice; utter.pitch = 0.85; } 
-          else if (isFemale) { utter.voice = femaleVoice; utter.pitch = 1.15; } 
-          else { utter.voice = femaleVoice; }
+          utter.lang = langCode;
+
+          // Google AI Studio 프로필 기반 남-녀 음성 및 음향 튜닝
+          if (isMale) {
+            utter.voice = maleVoice;
+            utter.pitch = maleProfile.pitch; // 묵직하고 신뢰감 있는 남성 톤 (Puck, Charon 등)
+            utter.rate = playbackRate * maleProfile.rate;
+          } else {
+            utter.voice = femaleVoice;
+            utter.pitch = femaleProfile.pitch; // 맑고 또렷한 여성 톤 (Aoede, Kore 등)
+            utter.rate = playbackRate * femaleProfile.rate;
+          }
 
           utterancesRef.current.push(utter);
           if (idx === lines.length - 1) {
@@ -778,11 +835,20 @@
         if (isFemale) targetVoice = accentVoices.find(v => isVoiceFemale(v.name)) || enVoices.find(v => isVoiceFemale(v.name)) || accentVoices[0];
         else targetVoice = accentVoices.find(v => isVoiceMale(v.name)) || enVoices.find(v => isVoiceMale(v.name)) || accentVoices[0];
 
+        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[0];
+        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[0];
+
         const utter = new SpeechSynthesisUtterance(text);
         utter.lang = langCode;
-        utter.rate = playbackRate;
         utter.voice = targetVoice;
-        utter.pitch = isFemale ? 1.15 : 0.85;
+
+        if (isFemale) {
+          utter.pitch = femaleProfile.pitch;
+          utter.rate = playbackRate * femaleProfile.rate;
+        } else {
+          utter.pitch = maleProfile.pitch;
+          utter.rate = playbackRate * maleProfile.rate;
+        }
 
         utter.onend = () => {
           setRpState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
@@ -1122,9 +1188,14 @@ ${spokenText}
         문항의 'accent' 필드는 무조건 "us" 또는 "uk" 소문자 문자열로만 지정해.
         3개의 문항 중 최소 1개는 반드시 "uk"로 지정해야 해.
 
-        [대화형 화자 분리 - 필수 준수]
-        대화형 문항은 남녀가 번갈아 대화하며, 발화가 바뀔 때마다 무조건 줄바꿈(엔터)을 해.
-        줄의 시작은 반드시 "M:" 또는 "W:" 기호를 사용해.
+        [2인 대화 남-녀(M-W) 엄격 분리 규칙 - 절대 준수]
+        - 대화형 문항(2문항)은 반드시 '1명의 남성(M)'과 '1명의 여성(W)' 간의 1:1 대화로만 구성할 것!
+        - 절대로 남-남(M-M)이나 여-여(W-W) 대화로 출제하지 말 것.
+        - 발화 순서는 무조건 남-녀가 번갈아 가며 교차(Alternating)해야 함 (예: M -> W -> M -> W 또는 W -> M -> W -> M).
+        - 각 발화가 바뀔 때마다 반드시 줄바꿈(엔터)을 하고, 줄의 시작은 반드시 'M:' 또는 'W:'로 명시할 것.
+        
+        [독백형 문항 규칙]
+        - 독백형 문항(1문항)은 화자가 1명이며 줄의 시작을 'M:' 또는 'W:' 중 하나로만 시작하여 끝까지 이어질 것.
         
         [수능 17대 표준 유형 및 선택지 언어 규칙 - 엄격 준수]
         - 3문제 중 최소 1문제는 반드시 '11. 짧은 대화 응답' 또는 '13. 긴 대화 응답' 유형으로 출제할 것.
@@ -1508,6 +1579,19 @@ ${feedbackList.slice(-3).join('\n')}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {/* Google AI Studio 음성 설정 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => setShowVoiceModal(true)}
+                  className="text-xs font-black px-2.5 py-1.5 border-2 border-black flex items-center gap-1.5 shadow-[2px_2px_0_0_#000] bg-white hover:bg-yellow-100 hover:translate-x-0.5 hover:translate-y-0.5 transition-all"
+                  title="Google AI Studio 남/녀 음성 종류 선택"
+                >
+                  <span>🎙️ 음성 설정</span>
+                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-[#E3FF73] text-black border border-black">
+                    {aiMaleVoice} 👨 / {aiFemaleVoice} 👩
+                  </span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => { setApiKeyInput(customApiKey); setShowKeyModal(true); }}
@@ -1526,6 +1610,110 @@ ${feedbackList.slice(-3).join('\n')}
               </div>
             </div>
           </header>
+
+          {/* Google AI Studio 음성 설정 모달 */}
+          {showVoiceModal && (
+            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+              <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_#000] max-w-lg w-full space-y-4 animate-fade-in max-h-[90vh] overflow-y-auto">
+                <div className="flex items-center justify-between border-b-4 border-black pb-2">
+                  <h3 className="text-lg font-black flex items-center gap-2">🎙️ Google AI Studio 음성 설정</h3>
+                  <button onClick={() => setShowVoiceModal(false)} className="text-sm font-black border-2 border-black px-2 py-0.5 bg-[#FF3B30] text-white">✕</button>
+                </div>
+
+                <div className="bg-[#E3FF73] p-3 border-2 border-black text-xs font-bold text-black space-y-1">
+                  <p className="font-black flex items-center gap-1">✨ 2인 대화 남-녀 엄격 분리 안내</p>
+                  <p>수능 듣기 2인 대화는 반드시 <strong>남성(M)</strong>과 <strong>여성(W)</strong>으로 100% 구분되어 재생됩니다. 아래에서 각 성별에 적용할 Google AI Studio 공식 보이스 종류를 선택하세요.</p>
+                </div>
+
+                {/* 남성 보이스 선택 */}
+                <div className="space-y-2">
+                  <label className="text-xs font-black text-black flex items-center gap-1">
+                    <span>👨 남성(M) 역할 음성 (Puck, Charon, Fenrir, Orus):</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {GOOGLE_AI_VOICES.male.map(v => (
+                      <div
+                        key={v.id}
+                        onClick={() => setAiMaleVoice(v.id)}
+                        className={`p-2.5 border-2 border-black cursor-pointer transition-all ${aiMaleVoice === v.id ? 'bg-[#FFD600] shadow-[2px_2px_0_0_#000] font-black' : 'bg-gray-50 hover:bg-gray-100'}`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold">{v.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              let voices = synthRef.current.getVoices();
+                              const vObj = findSafeVoice(voices, 'en-US', false, true);
+                              const utter = new SpeechSynthesisUtterance(`Hello, I'm ${v.id} from Google AI Studio. Nice to meet you.`);
+                              utter.lang = 'en-US'; utter.voice = vObj; utter.pitch = v.pitch; utter.rate = v.rate;
+                              synthRef.current.cancel(); synthRef.current.speak(utter);
+                            }}
+                            className="text-[10px] bg-black text-white px-1.5 py-0.5 border border-black hover:bg-gray-800"
+                            title="미리 듣기"
+                          >
+                            ▶ 샘플
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-600 mt-1 leading-tight">{v.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 여성 보이스 선택 */}
+                <div className="space-y-2 pt-2 border-t-2 border-dashed border-gray-300">
+                  <label className="text-xs font-black text-black flex items-center gap-1">
+                    <span>👩 여성(W) 역할 음성 (Aoede, Kore, Leda, Mimosa):</span>
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {GOOGLE_AI_VOICES.female.map(v => (
+                      <div
+                        key={v.id}
+                        onClick={() => setAiFemaleVoice(v.id)}
+                        className={`p-2.5 border-2 border-black cursor-pointer transition-all ${aiFemaleVoice === v.id ? 'bg-[#FF90E8] shadow-[2px_2px_0_0_#000] font-black' : 'bg-gray-50 hover:bg-gray-100'}`}
+                      >
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs font-bold">{v.name}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              let voices = synthRef.current.getVoices();
+                              const vObj = findSafeVoice(voices, 'en-US', true, false);
+                              const utter = new SpeechSynthesisUtterance(`Hi there, I'm ${v.id} from Google AI Studio. Let's practice English listening!`);
+                              utter.lang = 'en-US'; utter.voice = vObj; utter.pitch = v.pitch; utter.rate = v.rate;
+                              synthRef.current.cancel(); synthRef.current.speak(utter);
+                            }}
+                            className="text-[10px] bg-black text-white px-1.5 py-0.5 border border-black hover:bg-gray-800"
+                            title="미리 듣기"
+                          >
+                            ▶ 샘플
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-600 mt-1 leading-tight">{v.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-3 border-t-2 border-black">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.setItem('ai_male_voice', aiMaleVoice);
+                      localStorage.setItem('ai_female_voice', aiFemaleVoice);
+                      showToast(`남성: ${aiMaleVoice}, 여성: ${aiFemaleVoice} 음성으로 설정되었습니다!`, "success");
+                      setShowVoiceModal(false);
+                    }}
+                    className="text-xs font-black px-5 py-2.5 border-2 border-black bg-[#FFD600] shadow-[3px_3px_0_0_#000] active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    설정 저장 및 적용
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Gemini API Key 설정 모달 */}
           {showKeyModal && (
@@ -1842,8 +2030,28 @@ ${feedbackList.slice(-3).join('\n')}
                         </div>
                       </div>
                       
-                      <div className="mb-4 bg-[#F0E6D2] p-4 border-2 border-black font-mono text-sm leading-relaxed">
-                        <p className="font-black mb-2 text-black border-b border-black inline-block">📜 Transcript</p><br/>{item.transcript}
+                      <div className="mb-4 bg-[#F0E6D2] p-4 border-2 border-black font-mono text-sm leading-relaxed space-y-2">
+                        <div className="flex justify-between items-center border-b border-black pb-1 mb-2">
+                          <p className="font-black text-black">📜 Transcript (남-녀 대화 전문)</p>
+                          <span className="text-[10px] font-bold text-gray-600">음성: 👨 {aiMaleVoice} / 👩 {aiFemaleVoice}</span>
+                        </div>
+                        {item.transcript.split('\n').filter(l => l.trim()).map((line, lIdx) => {
+                          const isM = line.trim().startsWith('M:');
+                          const isW = line.trim().startsWith('W:');
+                          const clean = line.replace(/^[MWmw남여]:\s*/, '');
+                          return (
+                            <div key={lIdx} className="flex items-start gap-2">
+                              {isM ? (
+                                <span className="text-[10px] font-black bg-blue-600 text-white px-1.5 py-0.5 rounded shrink-0 mt-0.5">👨 M ({aiMaleVoice})</span>
+                              ) : isW ? (
+                                <span className="text-[10px] font-black bg-pink-600 text-white px-1.5 py-0.5 rounded shrink-0 mt-0.5">👩 W ({aiFemaleVoice})</span>
+                              ) : (
+                                <span className="text-[10px] font-black bg-gray-600 text-white px-1.5 py-0.5 rounded shrink-0 mt-0.5">🎙️</span>
+                              )}
+                              <span className="font-bold text-gray-900">{clean}</span>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* 단어장 (Vocabulary) 영역 추가 */}
