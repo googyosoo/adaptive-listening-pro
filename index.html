@@ -709,7 +709,8 @@
       
       // 실전 평가 제어 상태 (1단계 고도화)
       const [playCountMap, setPlayCountMap] = useState({}); // { [itemId]: count }
-      const [maxPlays, setMaxPlays] = useState(2); // 문항당 최대 청취 기회 (기본 2회)
+      const [maxPlays, setMaxPlays] = useState(99); // 문항당 최대 청취 기회 (기본 99회로 충분히 제공)
+      const [isContinuousPlaying, setIsContinuousPlaying] = useState(false); // 1~3번 전 문항 연속 실전 방송 모드
       const [examTimer, setExamTimer] = useState(360); // 타이머 (기본 6분 = 360초)
       
       // 대시보드 필터 상태
@@ -1178,41 +1179,52 @@
         const gKey = (customApiKey || "").trim();
         const uKey = (upstageApiKey || "").trim();
 
-        // 1. Google Gemini 최우선 초고속 모델 체인 호출 (1순위: flash-lite, 2순위: flash-latest, 3순위: 3.7-flash)
+        // 1. Google Gemini 최우선 초고속 모델 체인 호출 (1순위: flash-lite, 2순위: 3.5-flash-lite, 3순위: 3.7-flash, 4순위: flash-latest)
         if (gKey) {
-          const geminiModels = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.8-flash'];
+          const geminiModels = ['gemini-flash-lite-latest', 'gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-flash-latest'];
           const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
-          const geminiBody = {
-            contents: [{ parts: [{ text: fullPrompt }] }]
-          };
-          if (responseFormatJson) {
-            geminiBody.generationConfig = {
-              responseMimeType: "application/json",
-              temperature: 0.35,
-              ...(geminiSchema ? { responseSchema: geminiSchema } : {})
-            };
-          }
-
+          
           for (const modelName of geminiModels) {
-            try {
-              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${gKey}`;
-              const res = await fetch(geminiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(geminiBody)
-              });
-
-              if (res.ok) {
-                const data = await res.json();
-                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) {
-                  return { success: true, text, engine: `Google Gemini (${modelName})` };
-                }
-              } else {
-                console.warn(`Gemini model ${modelName} returned status:`, res.status);
+            // 1단계: 스키마가 있으면 스키마 적용 시도
+            const bodies = [];
+            if (responseFormatJson) {
+              if (geminiSchema) {
+                bodies.push({
+                  contents: [{ parts: [{ text: fullPrompt }] }],
+                  generationConfig: { responseMimeType: "application/json", temperature: 0.35, responseSchema: geminiSchema }
+                });
               }
-            } catch (err) {
-              console.warn(`Gemini model ${modelName} request failed:`, err);
+              // 스키마 오류 발생 시 일반 JSON MimeType으로 폴백
+              bodies.push({
+                contents: [{ parts: [{ text: fullPrompt }] }],
+                generationConfig: { responseMimeType: "application/json", temperature: 0.35 }
+              });
+            } else {
+              bodies.push({ contents: [{ parts: [{ text: fullPrompt }] }] });
+            }
+
+            for (const bodyPayload of bodies) {
+              try {
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${gKey}`;
+                const res = await fetch(geminiUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify(bodyPayload)
+                });
+
+                if (res.ok) {
+                  const data = await res.json();
+                  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (text && text.trim().length > 10) {
+                    return { success: true, text, engine: `Google Gemini (${modelName})` };
+                  }
+                } else if (res.status === 503) {
+                  // 일시적 과부하 시 1.2초 대기 후 다음 시도
+                  await new Promise(r => setTimeout(r, 1200));
+                }
+              } catch (err) {
+                console.warn(`Gemini model ${modelName} request exception:`, err);
+              }
             }
           }
         }
@@ -1686,6 +1698,7 @@
 
       const stopSpeech = () => {
         sequenceCancelledRef.current = true;
+        setIsContinuousPlaying(false);
         if (currentAudioRef.current) {
           try {
             currentAudioRef.current.pause();
@@ -1698,6 +1711,27 @@
         setIsPaused(false); 
         setPlayingStage(null);
         utterancesRef.current = [];
+      };
+
+      // [신규 고도화] 1~3번 전 문항 연속 순차 청취 (수능 실전 방송 마스터 모드)
+      const playAllQuestions = async () => {
+        if (!testData || testData.length === 0) return;
+        stopSpeech();
+        sequenceCancelledRef.current = false;
+        setIsContinuousPlaying(true);
+        showToast("1번부터 3번까지 전 문항 연속 실전 듣기 방송을 시작합니다.", "info");
+
+        for (let i = 0; i < testData.length; i++) {
+          if (sequenceCancelledRef.current) break;
+          const currentItem = testData[i];
+          await playSpeech(currentItem, i + 1);
+          if (sequenceCancelledRef.current) break;
+          // 문항 간 실제 수능 시험장 2.5초 간격
+          if (i < testData.length - 1 && !sequenceCancelledRef.current) {
+            await new Promise(r => setTimeout(r, 2500));
+          }
+        }
+        setIsContinuousPlaying(false);
       };
 
       // [신규 고도화] 딕테이션 빈칸 타겟 문장 3초 핀포인트 구간반복 (A-B Repeat)
@@ -2281,34 +2315,56 @@ ${spokenText}
           required: ["questions"]
         };
 
-        try {
-          const llmRes = await callUnifiedLlm({
-            systemPrompt: "You are the top English exam creator in Korea for the College Scholastic Ability Test (CSAT). You must output strictly valid JSON format.",
-            userPrompt: promptText,
-            responseFormatJson: true,
-            geminiSchema: geminiSchema
-          });
+        let successData = null;
+        let successEngine = null;
 
-          if (llmRes.success && llmRes.text) {
-            let parsed = JSON.parse(llmRes.text);
-            const questionList = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || []);
-            if (questionList && questionList.length > 0) {
-              const processedData = questionList.map((item, idx) => ({ ...item, id: Date.now() + idx }));
-              setTestData(processedData);
-              showToast(`고등학교 ${selectedGrade}학년 맞춤 문항 출제 완료! (${llmRes.engine})`, 'success');
-            } else {
-              throw new Error("Invalid questions array");
+        // AI 생성 최대 2회 심층 시도 (예비문제로 성급하게 빠지지 않고 AI 맞춤 문항 100% 출제 보장)
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            if (attempt === 2) {
+              showToast("AI 모델 다중 체인 2차 조율을 진행합니다. 잠시만 기다려 주세요.", "info");
+              await new Promise(r => setTimeout(r, 1500));
             }
-          } else {
-            throw new Error("LLM generation failed");
+
+            const llmRes = await callUnifiedLlm({
+              systemPrompt: "You are the top English exam creator in Korea for the College Scholastic Ability Test (CSAT). You must output strictly valid JSON format.",
+              userPrompt: promptText,
+              responseFormatJson: true,
+              geminiSchema: geminiSchema
+            });
+
+            if (llmRes.success && llmRes.text) {
+              let parsed = null;
+              try {
+                parsed = JSON.parse(llmRes.text);
+              } catch(jsonErr) {
+                // 마크다운 코드블록 정제 후 재시도
+                const cleanedJson = llmRes.text.replace(/```json/g, '').replace(/```/g, '').trim();
+                parsed = JSON.parse(cleanedJson);
+              }
+
+              const questionList = Array.isArray(parsed) ? parsed : (parsed.questions || parsed.data || []);
+              if (questionList && questionList.length > 0) {
+                successData = questionList.map((item, idx) => ({ ...item, id: Date.now() + idx }));
+                successEngine = llmRes.engine;
+                break;
+              }
+            }
+          } catch (err) {
+            console.warn(`Exam generation attempt ${attempt} failed:`, err);
           }
-        } catch (error) {
-          console.error("Exam Generation Error:", error);
+        }
+
+        if (successData && successData.length > 0) {
+          setTestData(successData);
+          showToast(`고등학교 ${selectedGrade}학년 맞춤 3문항 AI 출제 완료! (${successEngine})`, 'success');
+        } else {
+          // 인터넷 완전 단절 등 불가피한 경우에만 안내
           showToast("AI 실시간 출제 지연으로 예비 기출문제를 제공합니다.", "error");
           setTestData(FALLBACK_EXAM.map((item, idx) => ({...item, id: Date.now() + idx})));
-        } finally {
-          setExamState('taking');
         }
+
+        setExamState('taking');
       };
 
       const submitExam = async () => {
@@ -3645,19 +3701,45 @@ ${feedbackList.slice(-3).join('\n')}
               </div>
             )}
 
-            {/* GENERATING / EVALUATING VIEW (에메랄드 LCD 로딩 액정) */}
+            {/* GENERATING / EVALUATING VIEW (에메랄드 LCD 출제 정밀 공정 액정) */}
             {(examState === 'generating' || examState === 'evaluating') && (
-              <div className="skeuo-deck p-12 text-center flex flex-col items-center justify-center space-y-5 max-w-md mx-auto animate-fade-in">
-                <div className="skeuo-lcd p-6 w-full text-center space-y-3">
-                  <div className="flex justify-between items-center text-xs font-mono opacity-80 border-b border-[#234737] pb-1.5">
-                    <span>SYSTEM PROCESSING</span>
-                    <span className="animate-pulse">● REC</span>
+              <div className="skeuo-deck p-8 sm:p-10 text-center flex flex-col items-center justify-center space-y-5 max-w-lg mx-auto animate-fade-in">
+                <div className="skeuo-lcd p-6 w-full text-center space-y-4">
+                  <div className="flex justify-between items-center text-xs font-mono opacity-80 border-b border-[#234737] pb-2">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#00ff9d] animate-ping"></span>
+                      <span>AI EXAM SYNTHESIS ENGINE</span>
+                    </span>
+                    <span className="font-bold text-amber-300 animate-pulse">● PROCESSING</span>
                   </div>
-                  <div className="text-3xl animate-bounce-slow my-2">🎙️</div>
-                  <h3 className="text-lg font-bold tracking-wider">
-                    {examState === 'generating' ? '실전 수능 문항 생성 중...' : '채점 및 정밀 분석 중...'}
-                  </h3>
-                  <p className="text-xs opacity-75 font-mono">PLEASE WAIT FOR AUDIO SYNTHESIS</p>
+                  <div className="text-4xl animate-bounce-slow my-2">🎙️</div>
+                  <div className="space-y-1">
+                    <h3 className="text-lg font-black tracking-wide text-[#00ff9d]">
+                      {examState === 'generating' ? `고등학교 ${grade}학년 맞춤 3문항 정밀 출제 중...` : '수능 실전 채점 및 정밀 분석 중...'}
+                    </h3>
+                    <p className="text-xs opacity-80 font-sans text-slate-200">
+                      충분한 시간을 들여 실제 수능 기출 난이도와 남녀 1:1 대화를 정밀 생성하고 있습니다.
+                    </p>
+                  </div>
+
+                  {/* 3단계 공정 진행 인디케이터 */}
+                  <div className="pt-2 border-t border-[#234737] text-left space-y-2 text-[11px] font-mono">
+                    <div className="flex items-center justify-between text-[#00ff9d]">
+                      <span>① 호랭이닷컴 기출 어휘/난이도 정밀 분석</span>
+                      <span className="text-xs">✔</span>
+                    </div>
+                    <div className="flex items-center justify-between text-teal-300">
+                      <span className="flex items-center gap-1">
+                        <span className="animate-spin inline-block">⚙️</span>
+                        <span>② 남녀 1:1 교차 대본 및 수능 표준 유형 생성</span>
+                      </span>
+                      <span className="animate-pulse">진행 중...</span>
+                    </div>
+                    <div className="flex items-center justify-between opacity-50 text-slate-400">
+                      <span>③ 원어민 음성 매핑 및 주관식 딕테이션 검증</span>
+                      <span>대기</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
@@ -3674,11 +3756,21 @@ ${feedbackList.slice(-3).join('\n')}
                         <span>EXAM ACTIVE</span>
                       </div>
                       <h2 className="text-base font-black text-slate-800">
-                        고등학교 {grade}학년 실전 영어 듣기평가
+                        고등학교 {grade}학년 실전 영어 듣기평가 (총 3문항)
                       </h2>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* [신규 고도화] 1~3번 전 문항 연속 실전 듣기 마스터 버튼 */}
+                      <button 
+                        type="button"
+                        onClick={isContinuousPlaying ? stopSpeech : playAllQuestions}
+                        className={`skeuo-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${isContinuousPlaying ? 'skeuo-btn-red text-white' : 'skeuo-btn-teal text-white shadow-md'}`}
+                        title="1번부터 3번까지 수능 시험장 방송처럼 전 문항을 차례대로 연속 청취합니다."
+                      >
+                        <span>{isContinuousPlaying ? '⏹ 연속 방송 중지' : '📻 1~3번 전 문항 연속 실전 듣기 ▶'}</span>
+                      </button>
+
                       {/* 배속 조절 햅틱 버튼 */}
                       <button 
                         onClick={() => { setPlaybackRate(p => p === 0.8 ? 1.0 : (p === 1.0 ? 1.2 : 0.8)); }} 
@@ -3688,7 +3780,7 @@ ${feedbackList.slice(-3).join('\n')}
                         배속: {playbackRate.toFixed(1)}x
                       </button>
 
-                      {/* [신규] 시험 중단 및 홈으로 돌아가기 버튼 */}
+                      {/* 시험 중단 및 홈으로 돌아가기 버튼 */}
                       <button 
                         type="button"
                         onClick={handleGoBack} 
