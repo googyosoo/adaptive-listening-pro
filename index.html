@@ -934,10 +934,34 @@
         }
       };
 
-      // Google AI Studio 무료 API (Gemini 2.0 Flash) 실시간 네이티브 원어민 음성 합성기
+      // 대본 내 지문/상황묘사/효과음/괄호 설명 완벽 제거 및 순수 발화 대사 추출
+      const cleanDialogueSpeech = (rawText) => {
+        if (!rawText) return "";
+        let text = rawText;
+        // 1. 모든 종류의 괄호 안 내용 (전각 괄호 （...）, 반각 (...), 대괄호 [...], 【...】, 〔...〕, <...>, {...}, *...*, _..._) 완전 제거
+        text = text.replace(/[\(（\[【〔<\{][^\)）\]】〕>\}\n]*[\)）\]】〕>\}\n]/g, ' ');
+        text = text.replace(/\*[^*]+\*/g, ' ');
+        text = text.replace(/_[^_]+_/g, ' ');
+        
+        // 2. 화자 태그 제거 (M:, W:, Man:, Woman:, Boy:, Girl:, Speaker 1:, Narrator:, 남:, 여: 등)
+        text = text.replace(/^[\s\*\[\<\(（]*[a-zA-Z0-9_\-\s가-힣]{1,20}[\s\*\]\>\)）]*:[\s\*]*/i, '');
+        
+        // 3. 괄호 없이 남아있는 발화태도/상황 묘사어구 및 지문 지시어 철저 필터링
+        text = text.replace(/\b(smilingly|cheerfully|laughing|happily|excitedly|angrily|softly|calmly|surprised|sighs|chuckles|giggles|whispers|clears\s+throat|pauses?|hesitates?|groans?|yawns?|in\s+a\s+[a-z\s]+voice|with\s+a\s+[a-z\s]+smile)\b[\s,:\-]*/gi, ' ');
+        
+        // 4. 큰따옴표/작은따옴표 양끝 잔여물 및 공백 정리
+        text = text.replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '');
+        text = text.replace(/\s+/g, ' ').trim();
+        return text;
+      };
+
+      // Google AI Studio 공식 고음질 네이티브 음성 합성 (Lookahead Prefetching & Blob URL 캐싱)
       const fetchGoogleAiNativeAudio = async (text, requestedVoiceId) => {
         const apiKey = (customApiKey || "").trim();
         if (!apiKey) return null; // Gemini API 키가 없을 경우 브라우저 Web Speech로 자동 폴백
+
+        const cleanText = cleanDialogueSpeech(text);
+        if (!cleanText || !/[a-zA-Z]/.test(cleanText)) return null;
 
         // 'random'일 경우 실제 voiceName 매핑
         const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus'];
@@ -948,7 +972,7 @@
           actualVoice = combined[Math.floor(Math.random() * combined.length)];
         }
 
-        const cacheKey = `${actualVoice}:${text.trim()}`;
+        const cacheKey = `${actualVoice}:${cleanText}`;
         if (audioCacheRef.current[cacheKey]) {
           return audioCacheRef.current[cacheKey];
         }
@@ -957,7 +981,7 @@
           // Google AI Studio 공식 고음질 네이티브 오디오 생성 엔드포인트
           const payload = {
             contents: [{
-              parts: [{ text: `Speak this sentence naturally in clear native Global English: "${text}"` }]
+              parts: [{ text: `Speak this sentence naturally in clear native Global English: "${cleanText}"` }]
             }],
             generationConfig: {
               responseModalities: ["AUDIO"],
@@ -1016,24 +1040,6 @@
         }
 
         return null;
-      };
-
-      // 대본 내 지문/상황묘사/효과음/괄호 설명 완벽 제거 및 순수 발화 대사 추출
-      const cleanDialogueSpeech = (rawText) => {
-        if (!rawText) return "";
-        let text = rawText;
-        // 1. 화자 태그 제거 (M:, W:, Man:, Woman:, [M], (W) 등)
-        text = text.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|Boy|Girl|Speaker\s*\d*|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '');
-        // 2. 괄호 지문 및 상황묘사 제거 (소괄호, 대괄호, 꺾쇠, 별표, 중괄호)
-        text = text.replace(/\([^)]*\)/g, ' '); // (smiling), (sighs), (pause), (phone ringing) 등
-        text = text.replace(/\[[^\]]*\]/g, ' '); // [laughs], [Narrator], [sound of footsteps] 등
-        text = text.replace(/<[^>]*>/g, ' ');
-        text = text.replace(/\{[^}]*\}/g, ' ');
-        text = text.replace(/\*[^*]+\*/g, ' '); // *whispers* 등
-        text = text.replace(/_[^_]+_/g, ' ');
-        // 3. 특수기호 및 여백 정리
-        text = text.replace(/\s+/g, ' ').trim();
-        return text;
       };
 
       // STT (Shadowing) 상태
@@ -1485,42 +1491,52 @@
         const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === activeMaleVoiceName) || GOOGLE_AI_VOICES.male[1];
         const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === activeFemaleVoiceName) || GOOGLE_AI_VOICES.female[1];
 
-        // 1. 대본 정제 및 발화자/대사 리스트 구조화 (상황묘사/지문/효과음 지시문 완전 제거)
+        // 1. 대본 정제 및 발화자/대사 리스트 구조화 (상황묘사/지문/효과음 지시문 완전 제거 & 남녀 1:1 교차 대화 보장)
         const rawLines = item.transcript.split('\n').map(l => l.trim()).filter(l => l.length > 0);
         const parsedDialogueList = [];
+        const isMonologue = item.type === 'monologue';
         let currentSpeaker = null;
 
         for (const rawLine of rawLines) {
-          const speakerMatch = rawLine.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|Boy|Girl|Speaker\s*\d*|남|여|남자|여자)[\s\*\]\>\)]*:/i);
-          let isMale = false;
-          let isFemale = false;
-
-          if (speakerMatch) {
-            const speakerLabel = speakerMatch[1].toLowerCase();
-            if (speakerLabel.startsWith('m') || speakerLabel.startsWith('남') || speakerLabel.startsWith('b')) {
-              isMale = true;
-              currentSpeaker = 'M';
-            } else {
-              isFemale = true;
-              currentSpeaker = 'W';
-            }
-          } else {
-            // 화자 태그가 생략된 경우 교차 배정
-            if (currentSpeaker === 'M') {
-              isFemale = true;
-              currentSpeaker = 'W';
-            } else {
-              isMale = true;
-              currentSpeaker = 'M';
-            }
-          }
-
           // 상황묘사, 괄호 지문, 효과음 지시문 완전 제거
           const speechOnly = cleanDialogueSpeech(rawLine);
 
-          // 지문만 있어서 정제 후 내용이 비어있거나 영어 알파벳이 없는 경우 재생 목록에서 스킵
-          if (!speechOnly || !/[a-zA-Z]/.test(speechOnly)) {
+          // 지문만 있어서 정제 후 내용이 비어있거나 영어 알파벳이 없는 경우(예: [Sound of bell]) 재생 목록에서 스킵
+          if (!speechOnly || !/[a-zA-Z]/.test(speechOnly) || speechOnly.length < 2) {
             continue;
+          }
+
+          const speakerMatch = rawLine.match(/^[\s\*\[\<\(（]*(M|W|Man|Woman|Boy|Girl|Male|Female|Speaker\s*\d*|남|여|남자|여자)[\s\*\]\>\)）]*:/i);
+          let isMale = false;
+          let isFemale = false;
+
+          if (isMonologue) {
+            // 독백형 문항: 첫 발화자의 성별 유지 (기본 M)
+            if (currentSpeaker === null) {
+              if (speakerMatch) {
+                const s = speakerMatch[1].toLowerCase();
+                currentSpeaker = (s.startsWith('w') || s.startsWith('여') || s.startsWith('g') || s.startsWith('f')) ? 'W' : 'M';
+              } else {
+                currentSpeaker = 'M';
+              }
+            }
+            isMale = currentSpeaker === 'M';
+            isFemale = currentSpeaker === 'W';
+          } else {
+            // 대화형 문항: 반드시 남-여(M-W)가 1:1로 엄격하게 번갈아 가며 발화하도록 보장!
+            if (currentSpeaker === null) {
+              if (speakerMatch) {
+                const s = speakerMatch[1].toLowerCase();
+                currentSpeaker = (s.startsWith('w') || s.startsWith('여') || s.startsWith('g') || s.startsWith('f')) ? 'W' : 'M';
+              } else {
+                currentSpeaker = 'M';
+              }
+            } else {
+              // 대화는 무조건 이전 화자의 반대 성별로 자동 교차 (남 -> 여 -> 남 -> 여)
+              currentSpeaker = (currentSpeaker === 'M') ? 'W' : 'M';
+            }
+            isMale = currentSpeaker === 'M';
+            isFemale = currentSpeaker === 'W';
           }
 
           const targetAiVoiceName = isMale ? activeMaleVoiceName : activeFemaleVoiceName;
@@ -1543,7 +1559,7 @@
           });
         }
 
-        // 3. 실제 순차 재생 실행 (자연스러운 턴테이킹)
+        // 3. 실제 순차 재생 실행 (포즈 없는 자연스러운 연속 대화)
         for (let idx = 0; idx < parsedDialogueList.length; idx++) {
           if (sequenceCancelledRef.current) break;
           const turn = parsedDialogueList[idx];
@@ -1618,9 +1634,9 @@
 
           setActiveSpeakerIndicator(null);
 
-          // 대사 간 실제 사람의 자연스러운 호흡 턴테이킹 간격 (0.16초)
+          // 대사 간 인위적인 지연(포즈) 없이 즉시 다음 대사로 부드럽게 연결 (무지연 연속 재생)
           if (idx < parsedDialogueList.length - 1 && !sequenceCancelledRef.current) {
-            await new Promise(r => setTimeout(r, 160));
+            await new Promise(r => setTimeout(r, 10));
           }
         }
 
@@ -1744,21 +1760,28 @@
         stopSpeech();
         if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e){} }
 
-        // 대본을 파싱하여 발화자 분리 및 괄호 지문/상황묘사 제거
-        const lines = item.transcript.split('\n')
-          .filter(l => l.trim().length > 0)
-          .map((line, idx) => {
-            const match = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:(.*)/i);
-            let speaker = 'W';
+        // 대본을 파싱하여 발화자 분리 및 괄호 지문/상황묘사 제거 (남녀 1:1 교차 보장)
+        const rawLines = (item.transcript || '').split('\n').filter(l => l.trim().length > 0);
+        let currentSpeaker = null;
+        const lines = [];
+
+        rawLines.forEach((rawLine) => {
+          const cleanText = cleanDialogueSpeech(rawLine);
+          if (!cleanText || !/[a-zA-Z]/.test(cleanText) || cleanText.length < 2) return;
+
+          const match = rawLine.match(/^[\s\*\[\<\(（]*(M|W|Man|Woman|Boy|Girl|Male|Female|남|여|남자|여자)[\s\*\]\>\)）]*:/i);
+          if (currentSpeaker === null) {
             if (match) {
               const s = match[1].toLowerCase();
-              if(s.startsWith('m') || s.startsWith('남')) speaker = 'M';
-              else speaker = 'W';
+              currentSpeaker = (s.startsWith('w') || s.startsWith('여') || s.startsWith('g') || s.startsWith('f')) ? 'W' : 'M';
+            } else {
+              currentSpeaker = 'M';
             }
-            const cleanText = cleanDialogueSpeech(line);
-            return { idx, speaker, text: cleanText, original: line };
-          })
-          .filter(l => l.text && /[a-zA-Z]/.test(l.text));
+          } else {
+            currentSpeaker = (currentSpeaker === 'M') ? 'W' : 'M';
+          }
+          lines.push({ idx: lines.length, speaker: currentSpeaker, text: cleanText, original: rawLine });
+        });
 
         setRpState({
           activeId: item.id,
@@ -2163,19 +2186,19 @@ ${spokenText}
         문항의 'accent' 필드는 무조건 "us" 또는 "uk" 소문자 문자열로만 지정해.
         3개의 문항 중 최소 1개는 반드시 "uk"로 지정해야 해.
 
-        [2인 대화 남-녀(M-W) 엄격 분리 규칙 - 절대 준수]
-        - 대화형 문항(2문항)은 반드시 '1명의 남성(M)'과 '1명의 여성(W)' 간의 1:1 대화로만 구성할 것!
+        [2인 대화 남-녀(M-W) 엄격 분리 및 1:1 교차 발화 규칙 - 100% 필수 준수]
+        - 대화형 문항(type: "dialogue")은 반드시 '1명의 남성(M)'과 '1명의 여성(W)' 간의 1:1 대화로만 구성할 것!
         - 절대로 남-남(M-M)이나 여-여(W-W) 대화로 출제하지 말 것.
-        - 발화 순서는 무조건 남-녀가 번갈아 가며 교차(Alternating)해야 함 (예: M -> W -> M -> W 또는 W -> M -> W -> M).
-        - 각 발화가 바뀔 때마다 반드시 줄바꿈(엔터)을 하고, 줄의 시작은 반드시 'M:' 또는 'W:'로 명시할 것.
+        - 발화 순서는 무조건 남-녀가 1:1로 번갈아 가며 교차(Alternating)해야 함 (예: M -> W -> M -> W 또는 W -> M -> W -> M).
+        - 각 발화마다 반드시 줄바꿈(엔터)을 하고, 줄의 시작은 반드시 'M:' 또는 'W:'로만 명시할 것 (예: M: Hello. / W: Hi.).
         
-        [대본 작성 및 지문/상황묘사 절대 금지 규칙 - 100% 실제 발화 대사만 작성]
-        - 대본(transcript)에는 실제 입으로 발화하는 순수 대사만 작성할 것!
-        - 절대로 (smiling), (sighs), (laughs), (pause), (phone rings), [Narrator], [sound of footsteps] 등과 같은 괄호 지문, 상황 묘사, 효과음 표현을 대본에 포함하지 말 것!
-        - 음성 합성 엔진(TTS)이 대본을 그대로 읽으므로, 모든 문장은 화자가 입 밖으로 소리 내어 말하는 완전한 영어 문장으로만 구성되어야 함.
+        [대본 작성 및 발화태도/상황묘사/지문 100% 절대 금지 규칙 - 순수 발화 대사만 작성]
+        - 대본(transcript)에는 성우가 입으로 소리 내어 말하는 100% 순수 영어 대사만 작성할 것!
+        - 절대로 (smilingly), (cheerfully), (in a hurry), (surprised), (calmly), (sighs), (laughs), (pause), [Narrator], [sound of footsteps] 등과 같은 어떠한 괄호 지문, 발화 태도 묘사, 상황 묘사, 효과음 표현도 대본에 일체 포함하지 말 것!
+        - 음성 합성 엔진(TTS)이 대본을 그대로 소리 내어 읽으므로, 모든 문장은 불필요한 설명 없이 100% 완전한 영어 발화 대사로만 구성되어야 함.
 
         [독백형 문항 규칙]
-        - 독백형 문항(1문항)은 화자가 1명이며 줄의 시작을 'M:' 또는 'W:' 중 하나로만 시작하여 끝까지 이어질 것.
+        - 독백형 문항(type: "monologue", 1문항)은 화자가 1명이며 줄의 시작을 'M:' 또는 'W:' 중 하나로만 시작하여 끝까지 이어질 것.
         
         [수능 17대 표준 유형 및 선택지 언어 규칙 - 엄격 준수]
         - 3문제 중 최소 1문제는 반드시 '11. 짧은 대화 응답' 또는 '13. 긴 대화 응답' 유형으로 출제할 것.
