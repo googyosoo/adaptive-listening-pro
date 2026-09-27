@@ -721,24 +721,6 @@
       const [isSubmitting, setIsSubmitting] = useState(false);
       const [hasSubmitted, setHasSubmitted] = useState(false); 
 
-      // 실전 시험 타이머 효과
-      useEffect(() => {
-        let timerInterval = null;
-        if (examState === 'taking' && examTimer > 0) {
-          timerInterval = setInterval(() => {
-            setExamTimer(prev => {
-              if (prev <= 1) {
-                clearInterval(timerInterval);
-                showToast("⏰ 권장 시험 시간이 종료되었습니다! 서둘러 답안을 제출해주세요.", "error");
-                return 0;
-              }
-              return prev - 1;
-            });
-          }, 1000);
-        }
-        return () => { if (timerInterval) clearInterval(timerInterval); };
-      }, [examState, examTimer]); 
-      
       // Audio/TTS 상태 (2단계 고도화)
       const [playingId, setPlayingId] = useState(null);
       const [playingStage, setPlayingStage] = useState(null); // null | 'narration' | 'chime' | 'body'
@@ -873,8 +855,8 @@
         }
       }, [googleClientId, examState]);
 
-      // AI 엔진 선택 및 키 관리 (듀얼 엔진: Upstage Solar Pro vs Google Gemini)
-      const [aiEngine, setAiEngine] = useState(() => localStorage.getItem('ai_engine_type') || 'upstage'); // 기본값: 업스테이지 Solar Pro
+      // AI 엔진 선택 및 키 관리 (주력 엔진: Google Gemini 초고속 체인 & 보조: Upstage Solar Pro)
+      const [aiEngine, setAiEngine] = useState(() => localStorage.getItem('ai_engine_type') || 'gemini'); // 기본값: Google Gemini
       const [upstageApiKey, setUpstageApiKey] = useState(() => localStorage.getItem('upstage_api_key') || decodeSecureKey(DEFAULT_SECURE_UPSTAGE));
       const [upstageKeyInput, setUpstageKeyInput] = useState(() => localStorage.getItem('upstage_api_key') || decodeSecureKey(DEFAULT_SECURE_UPSTAGE));
 
@@ -1185,14 +1167,52 @@
         }
       };
 
-      // [신규 고도화] 통합 멀티 AI 엔진 호출기 (Upstage Solar Pro vs Google Gemini)
+      // [신규 고도화] 초고속 Gemini Flash 멀티 모델 체인 및 통합 AI 추론기
       const callUnifiedLlm = async ({ systemPrompt, userPrompt, responseFormatJson = false, geminiSchema = null }) => {
-        const currentEngine = aiEngine; // 'upstage' | 'gemini'
-        const uKey = (upstageApiKey || "").trim();
         const gKey = (customApiKey || "").trim();
+        const uKey = (upstageApiKey || "").trim();
 
-        // 1. Upstage Solar Pro 호출
-        if (currentEngine === 'upstage' && uKey) {
+        // 1. Google Gemini 최우선 초고속 모델 체인 호출 (1순위: flash-lite, 2순위: flash-latest, 3순위: 3.7-flash)
+        if (gKey) {
+          const geminiModels = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-3.7-flash', 'gemini-3.8-flash'];
+          const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
+          const geminiBody = {
+            contents: [{ parts: [{ text: fullPrompt }] }]
+          };
+          if (responseFormatJson) {
+            geminiBody.generationConfig = {
+              responseMimeType: "application/json",
+              temperature: 0.35,
+              ...(geminiSchema ? { responseSchema: geminiSchema } : {})
+            };
+          }
+
+          for (const modelName of geminiModels) {
+            try {
+              const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${gKey}`;
+              const res = await fetch(geminiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(geminiBody)
+              });
+
+              if (res.ok) {
+                const data = await res.json();
+                const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) {
+                  return { success: true, text, engine: `Google Gemini (${modelName})` };
+                }
+              } else {
+                console.warn(`Gemini model ${modelName} returned status:`, res.status);
+              }
+            } catch (err) {
+              console.warn(`Gemini model ${modelName} request failed:`, err);
+            }
+          }
+        }
+
+        // 2. Upstage Solar Pro 보조 엔진 (Gemini 키가 없거나 전 모델 예외 발생 시)
+        if (uKey) {
           try {
             const upstageUrl = 'https://api.upstage.ai/v1/solar/chat/completions';
             const messages = [];
@@ -1221,43 +1241,9 @@
               const data = await res.json();
               const text = data.choices?.[0]?.message?.content;
               if (text) return { success: true, text, engine: 'Upstage Solar Pro' };
-            } else {
-              const errData = await res.json().catch(() => ({}));
-              console.warn("Upstage API Error:", res.status, errData);
             }
           } catch(err) {
-            console.warn("Upstage call failed, trying Gemini fallback if available:", err);
-          }
-        }
-
-        // 2. Google Gemini 호출 (엔진이 gemini이거나 Upstage 폴백 시)
-        if (gKey) {
-          try {
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${gKey}`;
-            const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
-            const geminiBody = {
-              contents: [{ parts: [{ text: fullPrompt }] }]
-            };
-            if (responseFormatJson) {
-              geminiBody.generationConfig = {
-                responseMimeType: "application/json",
-                ...(geminiSchema ? { responseSchema: geminiSchema } : {})
-              };
-            }
-
-            const res = await fetch(geminiUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(geminiBody)
-            });
-
-            if (res.ok) {
-              const data = await res.json();
-              const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (text) return { success: true, text, engine: 'Google Gemini' };
-            }
-          } catch(err) {
-            console.warn("Gemini call failed:", err);
+            console.warn("Upstage fallback call failed:", err);
           }
         }
 
@@ -3613,14 +3599,6 @@ ${feedbackList.slice(-3).join('\n')}
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* LCD 카운트다운 타이머 */}
-                      <div className={`skeuo-lcd px-3.5 py-1 text-xs font-mono font-bold flex items-center gap-1.5 ${examTimer <= 60 ? 'border-red-500 text-red-400' : ''}`}>
-                        <span>⏱ TIME</span>
-                        <span className="text-sm">
-                          {Math.floor(examTimer / 60)}:{examTimer % 60 < 10 ? '0' : ''}{examTimer % 60}
-                        </span>
-                      </div>
-
                       {/* 배속 조절 햅틱 버튼 */}
                       <button 
                         onClick={() => { setPlaybackRate(p => p === 0.8 ? 1.0 : (p === 1.0 ? 1.2 : 0.8)); }} 
