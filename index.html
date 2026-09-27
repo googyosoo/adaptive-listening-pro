@@ -995,16 +995,16 @@
             }
           };
 
-          // 1차 시도: gemini-2.5-flash-preview-tts (초고속 저지연)
-          let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
+          // 1차 시도: gemini-3.8-flash-lite-tts (최신 초고속 고음질 오디오 생성 공식 모델)
+          let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-lite-tts:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
 
-          // 2차 시도: gemini-3.8-flash-tts (최신 플래그십 폴백)
+          // 2차 시도: gemini-3.1-flash-tts-preview (독립 쿼터 보조 고음질 오디오 모델)
           if (!res.ok) {
-            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent?key=${apiKey}`, {
+            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-tts-preview:generateContent?key=${apiKey}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(payload)
@@ -1019,9 +1019,9 @@
           const data = await res.json();
           const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
           if (inlineData && inlineData.data) {
-            const mime = inlineData.mimeType || 'audio/mp3';
+            const mime = inlineData.mimeType || 'audio/wav';
             let audioUrl;
-            if (mime.includes('pcm')) {
+            if (mime.includes('pcm') || mime.includes('l16')) {
               let rate = 24000;
               const rateMatch = mime.match(/rate=(\d+)/);
               if (rateMatch) rate = parseInt(rateMatch[1], 10);
@@ -1259,19 +1259,23 @@
       // 100% 남/녀 음성 분리 및 글로벌 잉글리시 매핑 보장 엔진 (Zero-Collision Voice Resolver)
       const isVoiceFemale = (name) => { 
         const n = (name || '').toLowerCase(); 
+        if (n.includes('google us english') || n.includes('google uk english female')) return true; 
         if (n.includes('female') || n.includes('woman') || n.includes('girl')) return true; 
         const femaleKeywords = [
           'zira', 'samantha', 'victoria', 'karen', 'susan', 'catherine', 'elsa', 'hazel', 
           'veena', 'tessa', 'serena', 'yuna', 'heami', 'ava', 'jenny', 'aria', 'michelle', 
           'stephanie', 'sonia', 'libby', 'natasha', 'clara', 'amy', 'emily', 'emma', 'olivia', 
-          'chloe', 'sara', 'sarah', 'mary', 'kate', 'google us english', 'sunhi', 'sehyun'
+          'chloe', 'sara', 'sarah', 'mary', 'kate', 'sunhi', 'sehyun'
         ];
         return femaleKeywords.some(k => n.includes(k)); 
       };
 
       const isVoiceMale = (name) => { 
         const n = (name || '').toLowerCase(); 
-        if (n.includes('female') || n.includes('woman')) return false; 
+        // Chrome의 Google US English는 실제 여성이 발음하므로 남성 보이스 풀에서 철저히 제외
+        if (n.includes('google us english') || n.includes('google uk english female')) return false; 
+        if (n.includes('female') || n.includes('woman') || n.includes('girl')) return false; 
+        if (n.includes('google uk english male')) return true;
         if (n.includes('male') || n.includes('man') || n.includes('boy')) return true; 
         const maleKeywords = [
           'david', 'alex', 'daniel', 'fred', 'mark', 'james', 'guy', 'arthur', 'aaron', 
@@ -1303,19 +1307,19 @@
         const femalePool = pool.filter(v => isVoiceFemale(v.name));
         const malePool = pool.filter(v => isVoiceMale(v.name));
 
-        // 화자 ID별 최적의 시스템 보이스 검색 우선순위 및 오디오 프로필 매핑
+        // 화자 ID별 최적의 시스템 보이스 검색 우선순위 및 오디오 프로필 매핑 (남성은 실제 남성 성우 우선 매칭)
         const maleProfiles = {
-          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'google us', 'mark'], pitch: 0.95, rate: 1.02 },
-          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'google us'], pitch: 0.68, rate: 0.92 },
-          Fenrir: { keywords: ['ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb'], pitch: 0.86, rate: 1.0 },
-          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian'], pitch: 0.76, rate: 0.95 }
+          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'mark', 'google uk english male', 'brian'], pitch: 0.95, rate: 1.02 },
+          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.68, rate: 0.92 },
+          Fenrir: { keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb'], pitch: 0.86, rate: 1.0 },
+          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian', 'david'], pitch: 0.76, rate: 0.95 }
         };
 
         const femaleProfiles = {
           Aoede: { keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.25, rate: 1.02 },
           Kore: { keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.02, rate: 0.94 },
-          Leda: { keywords: ['sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb'], pitch: 1.20, rate: 0.98 },
-          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au'], pitch: 1.10, rate: 0.96 }
+          Leda: { keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb'], pitch: 1.20, rate: 0.98 },
+          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.10, rate: 0.96 }
         };
 
         const mProf = maleProfiles[targetMaleId] || maleProfiles.Puck;
@@ -2815,10 +2819,17 @@ ${feedbackList.slice(-3).join('\n')}
                             onClick={async (e) => {
                               e.stopPropagation();
                               stopSpeech();
-                              const sampleText = "Hello! I am speaking in natural native English for your listening exam.";
+                              const chosenId = v.id === 'random' ? 'Puck' : v.id;
+                              const sampleMap = {
+                                Puck: "Hello! I am Puck, sounding energetic and clear.",
+                                Charon: "Greetings, I am Charon, providing a deep and reliable voice.",
+                                Fenrir: "Good day, I am Fenrir, speaking in a distinct British accent.",
+                                Orus: "G'day, I am Orus, offering a calm and intellectual Australian voice."
+                              };
+                              const sampleText = sampleMap[chosenId] || "Hello! I am speaking in natural native English for your listening exam.";
                               if (customApiKey) {
-                                showToast(`Google AI Studio '${v.id === 'random' ? 'Puck' : v.id}' 음성 생성 중...`, "info");
-                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, v.id === 'random' ? 'Puck' : v.id);
+                                showToast(`Google AI Studio '${chosenId}' 고음질 음성 생성 중...`, "info");
+                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, chosenId);
                                 if (audioUrl) {
                                   const audio = new Audio(audioUrl);
                                   currentAudioRef.current = audio;
@@ -2827,13 +2838,15 @@ ${feedbackList.slice(-3).join('\n')}
                                 }
                               }
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
-                              const { maleVoice, isSameVoice } = resolveDisjointVoices(voices, v.id === 'random' ? 'Puck' : v.id, 'Aoede', 'us');
+                              const { maleVoice, maleSettings, isSameVoice } = resolveDisjointVoices(voices, chosenId, 'Aoede', 'us');
                               const utter = new SpeechSynthesisUtterance(sampleText);
-                              utter.lang = 'en-US'; 
-                              if (maleVoice) utter.voice = maleVoice; 
-                              utter.pitch = Math.min(v.pitch || 0.80, 0.72); 
-                              utter.rate = isSameVoice ? 0.88 : (v.rate || 0.98);
-                              showToast(`남성 목소리 재생 중: ${maleVoice ? maleVoice.name : '시스템 남성 음성'}`, "info");
+                              if (maleVoice) {
+                                utter.voice = maleVoice;
+                                utter.lang = maleVoice.lang || 'en-US';
+                              }
+                              utter.pitch = maleSettings.pitch || 0.80; 
+                              utter.rate = isSameVoice ? 0.88 : (maleSettings.rate || 0.98);
+                              showToast(`남성 목소리 재생 중: ${chosenId} (${maleVoice ? maleVoice.name : '시스템 남성 음성'})`, "info");
                               synthRef.current.speak(utter);
                             }}
                             className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-teal-800"
@@ -2871,10 +2884,17 @@ ${feedbackList.slice(-3).join('\n')}
                             onClick={async (e) => {
                               e.stopPropagation();
                               stopSpeech();
-                              const sampleText = "Hi there! I am ready to practice Global English listening with you.";
+                              const chosenId = v.id === 'random' ? 'Aoede' : v.id;
+                              const sampleMap = {
+                                Aoede: "Hi there! I am Aoede, a clear and pleasant American speaker.",
+                                Kore: "Hello, I am Kore, speaking in a calm, warm, and gentle tone.",
+                                Leda: "Good day, I am Leda, speaking with a polished and intellectual British accent.",
+                                Mimosa: "G'day, I am Mimosa, bringing a warm and cheerful Australian style."
+                              };
+                              const sampleText = sampleMap[chosenId] || "Hi there! I am ready to practice Global English listening with you.";
                               if (customApiKey) {
-                                showToast(`Google AI Studio '${v.id === 'random' ? 'Aoede' : v.id}' 음성 생성 중...`, "info");
-                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, v.id === 'random' ? 'Aoede' : v.id);
+                                showToast(`Google AI Studio '${chosenId}' 고음질 음성 생성 중...`, "info");
+                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, chosenId);
                                 if (audioUrl) {
                                   const audio = new Audio(audioUrl);
                                   currentAudioRef.current = audio;
@@ -2883,13 +2903,15 @@ ${feedbackList.slice(-3).join('\n')}
                                 }
                               }
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
-                              const { femaleVoice, isSameVoice } = resolveDisjointVoices(voices, 'Puck', v.id === 'random' ? 'Aoede' : v.id, 'us');
+                              const { femaleVoice, femaleSettings, isSameVoice } = resolveDisjointVoices(voices, 'Puck', chosenId, 'us');
                               const utter = new SpeechSynthesisUtterance(sampleText);
-                              utter.lang = 'en-US'; 
-                              if (femaleVoice) utter.voice = femaleVoice; 
-                              utter.pitch = Math.max(v.pitch || 1.15, 1.30); 
-                              utter.rate = isSameVoice ? 1.15 : (v.rate || 1.0);
-                              showToast(`여성 목소리 재생 중: ${femaleVoice ? femaleVoice.name : '시스템 여성 음성'}`, "info");
+                              if (femaleVoice) {
+                                utter.voice = femaleVoice;
+                                utter.lang = femaleVoice.lang || 'en-US';
+                              }
+                              utter.pitch = femaleSettings.pitch || 1.15; 
+                              utter.rate = isSameVoice ? 1.15 : (femaleSettings.rate || 1.0);
+                              showToast(`여성 목소리 재생 중: ${chosenId} (${femaleVoice ? femaleVoice.name : '시스템 여성 음성'})`, "info");
                               synthRef.current.speak(utter);
                             }}
                             className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-pink-800"
