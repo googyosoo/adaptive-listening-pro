@@ -2640,64 +2640,44 @@ ${feedbackList.slice(-3).join('\n')}
                   </span>
                 </button>
 
-                {/* AI 엔진 및 API 키 설정 버튼 */}
-                <button
-                  type="button"
-                  onClick={() => { 
-                    setUpstageKeyInput(upstageApiKey); 
-                    setApiKeyInput(customApiKey); 
-                    setShowKeyModal(true); 
-                  }}
-                  className={`skeuo-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${(aiEngine === 'upstage' && upstageApiKey) || (aiEngine === 'gemini' && customApiKey) ? 'text-teal-700' : 'text-slate-600'}`}
-                  title="AI 엔진(Upstage Solar Pro / Google Gemini) 및 API 키 설정"
-                >
-                  <span>🔑 AI 엔진 설정</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shadow-inner ${(aiEngine === 'upstage' && upstageApiKey) ? 'bg-teal-100 text-teal-800' : customApiKey ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'}`}>
-                    {aiEngine === 'upstage' && upstageApiKey ? '⚡ Solar Pro' : customApiKey ? '✨ Gemini' : '미등록'}
-                  </span>
-                </button>
-
-                {/* Google SSO 설정 버튼 */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGoogleClientIdInput(googleClientId);
-                    setShowGoogleModal(true);
-                  }}
-                  className={`skeuo-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${googleClientId ? 'text-teal-700' : 'text-slate-600'}`}
-                  title="Google 계정 SSO (원클릭 로그인) Client ID 설정"
-                >
-                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
-                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
-                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
-                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                  </svg>
-                  <span>구글 SSO</span>
-                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shadow-inner ${googleUser ? 'bg-emerald-100 text-emerald-800' : googleClientId ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'}`}>
-                    {googleUser ? '연동됨' : googleClientId ? '준비됨' : '설정'}
-                  </span>
-                </button>
-
-                {examState !== 'login' && examState !== 'teacher_login' && (
-                  <div className="flex items-center gap-1.5">
+                {/* 우측 상단 사용자 프로필 및 로그인/로그아웃 버튼 */}
+                {examState !== 'login' && examState !== 'teacher_login' ? (
+                  <div className="flex items-center gap-2">
                     <span className="skeuo-inset text-xs font-bold px-3 py-1.5 text-slate-700 shadow-inner flex items-center gap-1.5">
                       {googleUser?.picture ? (
                         <img src={googleUser.picture} alt="Profile" className="w-4 h-4 rounded-full ring-1 ring-slate-300" />
                       ) : (
                         <span>👤</span>
                       )}
-                      <span>{studentInfo.schoolGrade}학년 {studentInfo.classNum}반 {studentInfo.name}</span>
+                      <span>{studentInfo.schoolGrade ? `${studentInfo.schoolGrade}학년 ${studentInfo.classNum}반 ` : ''}{studentInfo.name || '수험생'}</span>
                     </span>
                     <button
                       type="button"
                       onClick={googleUser ? handleGoogleLogout : () => setExamState('login')}
-                      className="skeuo-btn text-xs font-bold px-2 py-1.5 text-slate-500 hover:text-rose-600"
-                      title={googleUser ? "구글 계정 로그아웃" : "수험생 로그아웃"}
+                      className="skeuo-btn text-xs font-black px-3 py-1.5 text-rose-600 hover:text-rose-800 flex items-center gap-1 shadow-xs border border-rose-200"
+                      title={googleUser ? "구글 계정 및 수험생 로그아웃" : "수험생 로그아웃"}
                     >
-                      로그아웃
+                      <span>🚪 로그아웃</span>
                     </button>
                   </div>
+                ) : examState === 'teacher_login' || examState === 'teacher_dashboard' ? (
+                  <button
+                    type="button"
+                    onClick={() => setExamState('login')}
+                    className="skeuo-btn text-xs font-bold px-3 py-1.5 text-slate-700 hover:text-rose-600 flex items-center gap-1"
+                  >
+                    <span>🚪 관리자 나가기</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      showToast("아래 화면에서 Google 계정 또는 수험생 정보를 입력하여 로그인하세요.", "info");
+                    }}
+                    className="skeuo-btn skeuo-btn-teal text-xs font-black px-3.5 py-1.5 text-white flex items-center gap-1 shadow-sm"
+                  >
+                    <span>🔑 수험생 로그인</span>
+                  </button>
                 )}
               </div>
             </div>
@@ -3309,7 +3289,7 @@ ${feedbackList.slice(-3).join('\n')}
                             setShowGoogleModal(true);
                           }
                         }}
-                        className="skeuo-btn w-full py-3 px-4 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 transition-all font-black text-slate-700 text-sm shadow-sm border border-slate-300"
+                        className="skeuo-btn w-full py-3.5 px-4 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 transition-all font-black text-slate-700 text-sm shadow-sm border border-slate-300"
                       >
                         <svg className="w-4 h-4" viewBox="0 0 24 24">
                           <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
@@ -3319,17 +3299,6 @@ ${feedbackList.slice(-3).join('\n')}
                         </svg>
                         <span>Google 계정으로 계속하기</span>
                       </button>
-
-                      <div className="flex justify-between items-center px-1 text-[11px] text-slate-500 font-medium">
-                        <span>{googleClientId ? '🟢 Google Client ID 준비됨' : '⚪ Client ID 미등록'}</span>
-                        <button 
-                          type="button" 
-                          onClick={() => { setGoogleClientIdInput(googleClientId); setShowGoogleModal(true); }}
-                          className="text-teal-700 hover:text-teal-900 font-bold underline"
-                        >
-                          ⚙️ Client ID 설정
-                        </button>
-                      </div>
                     </div>
                   )}
 
@@ -3446,17 +3415,6 @@ ${feedbackList.slice(-3).join('\n')}
                             <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-teal-300 shadow-sm">
                               Student Profile
                             </span>
-                            {googleUser && (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 flex items-center gap-1">
-                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24">
-                                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
-                                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
-                                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
-                                </svg>
-                                <span>Google SSO</span>
-                              </span>
-                            )}
                           </div>
                           <h2 className="text-2xl font-black text-slate-800 mt-1">
                             {studentInfo.name} <span className="text-xs font-bold text-slate-500">({studentInfo.schoolGrade}학년 {studentInfo.classNum}반 {studentInfo.studentNum}번)</span>
