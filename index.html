@@ -978,10 +978,10 @@
         }
 
         try {
-          // Google AI Studio 공식 고음질 네이티브 오디오 생성 엔드포인트
+          // Google AI Studio 공식 고음질 네이티브 오디오 생성 엔드포인트 (순수 대사 텍스트만 전달)
           const payload = {
             contents: [{
-              parts: [{ text: `Speak this sentence naturally in clear native Global English: "${cleanText}"` }]
+              parts: [{ text: cleanText }]
             }],
             generationConfig: {
               responseModalities: ["AUDIO"],
