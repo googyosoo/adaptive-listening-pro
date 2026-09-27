@@ -16,6 +16,9 @@
   <!-- 시각적 차트 구성을 위한 Chart.js 추가 -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <!-- Google Identity Services (GIS) SDK (구글 계정 SSO 지원) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@500;700&display=swap');
     body {
@@ -655,7 +658,29 @@
     function CanvasApp() {
       // 1. 상태 관리
       const [examState, setExamState] = useState('login'); // login | idle | generating | taking | evaluating | result | teacher_login | teacher_dashboard
-      const [studentInfo, setStudentInfo] = useState({ schoolGrade: '', classNum: '', studentNum: '', name: '' });
+
+      // Google Identity Services (SSO) 상태 관리
+      const [googleClientId, setGoogleClientId] = useState(() => localStorage.getItem('google_client_id') || '');
+      const [googleClientIdInput, setGoogleClientIdInput] = useState(() => localStorage.getItem('google_client_id') || '');
+      const [googleUser, setGoogleUser] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem('google_auth_user') || 'null');
+        } catch(e) { return null; }
+      });
+      const [showGoogleModal, setShowGoogleModal] = useState(false);
+
+      const [studentInfo, setStudentInfo] = useState(() => {
+        try {
+          const savedUser = JSON.parse(localStorage.getItem('google_auth_user') || 'null');
+          if (savedUser && savedUser.sub) {
+            const savedBinding = JSON.parse(localStorage.getItem(`student_profile_${savedUser.sub}`) || 'null');
+            if (savedBinding) return savedBinding;
+          }
+          const lastProfile = JSON.parse(localStorage.getItem('last_student_profile') || 'null');
+          if (lastProfile) return lastProfile;
+        } catch(e) {}
+        return { schoolGrade: '', classNum: '', studentNum: '', name: '' };
+      });
       const [grade, setGrade] = useState(null); 
       const [testData, setTestData] = useState([]);
       const [answers, setAnswers] = useState({});
@@ -716,6 +741,130 @@
       const synthRef = useRef(window.speechSynthesis);
       const utterancesRef = useRef([]);
       
+      // Google Identity Services (GIS) JWT 토큰 디코더 (한글 깨짐 없는 Base64 URL 디코딩)
+      const parseJwt = (token) => {
+        try {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+          return JSON.parse(jsonPayload);
+        } catch (e) {
+          console.error("JWT parse error:", e);
+          return null;
+        }
+      };
+
+      // 구글 로그인 성공 시 실행되는 콜백
+      const handleGoogleCredentialResponse = (response) => {
+        if (!response || !response.credential) {
+          showToast("구글 계정 인증 정보를 수신하지 못했습니다.", "error");
+          return;
+        }
+        const profile = parseJwt(response.credential);
+        if (!profile) {
+          showToast("구글 계정 프로필 정보를 해석할 수 없습니다.", "error");
+          return;
+        }
+
+        const userObj = {
+          email: profile.email,
+          name: profile.name || profile.given_name || '수험생',
+          picture: profile.picture,
+          sub: profile.sub
+        };
+
+        setGoogleUser(userObj);
+        try {
+          localStorage.setItem('google_auth_user', JSON.stringify(userObj));
+        } catch(e) {}
+
+        // 기존에 연동된 학년/반/번호가 있는지 조회
+        const savedProfileKey = `student_profile_${profile.sub}`;
+        let savedProfile = null;
+        try {
+          savedProfile = JSON.parse(localStorage.getItem(savedProfileKey) || 'null');
+        } catch(e) {}
+
+        if (savedProfile && savedProfile.schoolGrade && savedProfile.classNum && savedProfile.studentNum) {
+          const fullInfo = {
+            ...savedProfile,
+            name: userObj.name
+          };
+          setStudentInfo(fullInfo);
+          showToast(`✨ 구글 계정(${userObj.name}님)으로 자동 로그인되었습니다!`, "success");
+          setExamState('idle');
+          fetchStudentStats();
+        } else {
+          // 이름 자동 기입 후 학년/반/번호 입력 유도
+          setStudentInfo(prev => ({
+            ...prev,
+            name: userObj.name
+          }));
+          showToast(`🎉 ${userObj.name}님 환영합니다! 소속 학년/반/번호를 등록하시면 구글 계정과 영구 연동됩니다.`, "info");
+        }
+      };
+
+      // 구글 로그아웃
+      const handleGoogleLogout = () => {
+        try {
+          if (window.google?.accounts?.id) {
+            window.google.accounts.id.disableAutoSelect();
+          }
+        } catch(e) {}
+        setGoogleUser(null);
+        localStorage.removeItem('google_auth_user');
+        setStudentInfo({ schoolGrade: '', classNum: '', studentNum: '', name: '' });
+        setExamState('login');
+        showToast("구글 계정에서 안전하게 로그아웃되었습니다.", "info");
+      };
+
+      // Google Identity Services SDK 동적 초기화 및 버튼 렌더링
+      useEffect(() => {
+        const initGoogleGsi = () => {
+          if (window.google?.accounts?.id && googleClientId) {
+            try {
+              window.google.accounts.id.initialize({
+                client_id: googleClientId,
+                callback: handleGoogleCredentialResponse,
+                auto_select: false,
+                cancel_on_tap_outside: true,
+              });
+
+              if (examState === 'login') {
+                const btnContainer = document.getElementById('google-signin-btn-container');
+                if (btnContainer) {
+                  btnContainer.innerHTML = '';
+                  window.google.accounts.id.renderButton(btnContainer, {
+                    theme: 'outline',
+                    size: 'large',
+                    text: 'continue_with',
+                    shape: 'rectangular',
+                    logo_alignment: 'left',
+                    width: 320
+                  });
+                }
+              }
+            } catch (err) {
+              console.warn("GIS initialization notice:", err);
+            }
+          }
+        };
+
+        if (window.google?.accounts?.id) {
+          initGoogleGsi();
+        } else {
+          const checkTimer = setInterval(() => {
+            if (window.google?.accounts?.id) {
+              clearInterval(checkTimer);
+              initGoogleGsi();
+            }
+          }, 300);
+          return () => clearInterval(checkTimer);
+        }
+      }, [googleClientId, examState]);
+
       // 보안 디코더 (GitHub Secret Scanning 방지 및 안전한 로컬 보관)
       const decodeSecureKey = (encoded) => {
         try { return atob(encoded); } catch(e) { return ''; }
@@ -2172,6 +2321,7 @@ ${detailedStats}
           const payload = {
             timestamp: new Date().toLocaleString('ko-KR'),
             schoolGrade: studentInfo.schoolGrade, classNum: studentInfo.classNum, studentNum: studentInfo.studentNum, name: studentInfo.name,
+            email: googleUser?.email || '',
             totalScore: scoreInfo.totalScore, maxScore: scoreInfo.maxScore,
             Q1: scoreInfo.detailedResults[0]?.isMcCorrect ? 'O' : 'X',
             Q2: scoreInfo.detailedResults[1]?.isMcCorrect ? 'O' : 'X',
@@ -2358,6 +2508,17 @@ ${feedbackList.slice(-3).join('\n')}
         if(!studentInfo.schoolGrade || !studentInfo.classNum || !studentInfo.studentNum || !studentInfo.name.trim()) {
           showToast('모든 정보를 입력해주세요.', 'error'); return;
         }
+        // 구글 로그인 연동 상태라면 해당 구글 계정(sub)과 학년/반/번호 영구 바인딩 저장
+        if (googleUser && googleUser.sub) {
+          try {
+            localStorage.setItem(`student_profile_${googleUser.sub}`, JSON.stringify(studentInfo));
+          } catch(e) {}
+        }
+        // 마지막 수험생 정보 로컬 캐시 백업
+        try {
+          localStorage.setItem('last_student_profile', JSON.stringify(studentInfo));
+        } catch(e) {}
+
         setExamState('idle'); fetchStudentStats();
       };
 
@@ -2437,10 +2598,47 @@ ${feedbackList.slice(-3).join('\n')}
                   </span>
                 </button>
 
-                {examState !== 'login' && examState !== 'teacher_login' && (
-                  <span className="skeuo-inset text-xs font-bold px-3 py-1.5 text-slate-700 shadow-inner flex items-center gap-1">
-                    👤 {studentInfo.schoolGrade}학년 {studentInfo.classNum}반 {studentInfo.name}
+                {/* Google SSO 설정 버튼 */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoogleClientIdInput(googleClientId);
+                    setShowGoogleModal(true);
+                  }}
+                  className={`skeuo-btn text-xs font-bold px-3 py-1.5 flex items-center gap-1.5 ${googleClientId ? 'text-teal-700' : 'text-slate-600'}`}
+                  title="Google 계정 SSO (원클릭 로그인) Client ID 설정"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                    <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
+                    <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                    <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                  </svg>
+                  <span>구글 SSO</span>
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold shadow-inner ${googleUser ? 'bg-emerald-100 text-emerald-800' : googleClientId ? 'bg-blue-100 text-blue-800' : 'bg-slate-200 text-slate-500'}`}>
+                    {googleUser ? '연동됨' : googleClientId ? '준비됨' : '설정'}
                   </span>
+                </button>
+
+                {examState !== 'login' && examState !== 'teacher_login' && (
+                  <div className="flex items-center gap-1.5">
+                    <span className="skeuo-inset text-xs font-bold px-3 py-1.5 text-slate-700 shadow-inner flex items-center gap-1.5">
+                      {googleUser?.picture ? (
+                        <img src={googleUser.picture} alt="Profile" className="w-4 h-4 rounded-full ring-1 ring-slate-300" />
+                      ) : (
+                        <span>👤</span>
+                      )}
+                      <span>{studentInfo.schoolGrade}학년 {studentInfo.classNum}반 {studentInfo.name}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={googleUser ? handleGoogleLogout : () => setExamState('login')}
+                      className="skeuo-btn text-xs font-bold px-2 py-1.5 text-slate-500 hover:text-rose-600"
+                      title={googleUser ? "구글 계정 로그아웃" : "수험생 로그아웃"}
+                    >
+                      로그아웃
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -2864,6 +3062,129 @@ ${feedbackList.slice(-3).join('\n')}
             </div>
           )}
 
+          {/* Google Identity Services (SSO) Client ID 설정 모달 */}
+          {showGoogleModal && (
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="skeuo-deck p-6 max-w-lg w-full space-y-4 animate-fade-in max-h-[90vh] overflow-y-auto border border-slate-300">
+                {/* 모달 헤더 */}
+                <div className="flex items-center justify-between border-b border-slate-300 pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className={`skeuo-led ${googleClientId ? 'led-green-on' : 'led-amber-on'}`}></span>
+                    <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+                      <svg className="w-4 h-4" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      <span>Google 계정 SSO (원클릭 로그인) 설정</span>
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowGoogleModal(false)} 
+                    className="skeuo-btn px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-lg border border-slate-200">
+                  Google Cloud Console에서 생성한 <strong>OAuth 2.0 Web Client ID</strong>를 등록하면 수험생과 교사가 Google 계정으로 클릭 한 번에 안전하게 로그인할 수 있습니다.
+                </div>
+
+                {/* 클라이언트 ID 입력 필드 */}
+                <div className="skeuo-inset p-4 space-y-3 bg-white/80">
+                  <div className="flex justify-between items-center">
+                    <label className="text-xs font-bold text-slate-700 block">Google OAuth Web Client ID</label>
+                    {googleClientId && (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
+                        ✅ 클라이언트 ID 등록됨
+                      </span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    value={googleClientIdInput}
+                    onChange={(e) => setGoogleClientIdInput(e.target.value)}
+                    placeholder="예: 1234567890-abcdef.apps.googleusercontent.com"
+                    className="skeuo-inset w-full p-2.5 text-xs font-mono text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-[11px] text-slate-500">
+                    * 입력하신 Client ID는 외부 서버로 전송되지 않고 사용자의 웹 브라우저 로컬 저장소에만 안전하게 보관됩니다.
+                  </p>
+                </div>
+
+                {/* Google Cloud Console 빠른 발급 가이드 */}
+                <div className="skeuo-inset p-3 bg-blue-50/50 border border-blue-200/60 rounded-xl space-y-2 text-left">
+                  <div className="text-xs font-black text-blue-900 flex items-center gap-1.5">
+                    <span>📌 3분 만에 Client ID 발급받는 방법</span>
+                  </div>
+                  <ol className="text-[11px] text-slate-600 space-y-1.5 list-decimal pl-4">
+                    <li>
+                      <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline">
+                        Google Cloud Console (사용자 인증 정보) ➔
+                      </a>에 접속합니다.
+                    </li>
+                    <li><strong>[사용자 인증 정보 만들기] ➔ [OAuth 클라이언트 ID]</strong>를 선택합니다.</li>
+                    <li>애플리케이션 유형을 <strong>'웹 애플리케이션'</strong>으로 선택합니다.</li>
+                    <li>
+                      <strong>'승인된 자바스크립트 원본'</strong>에 현재 배포된 주소(예: <code className="bg-slate-200 px-1 py-0.5 rounded font-mono font-bold text-slate-800">{window.location.origin}</code>)를 등록합니다.
+                    </li>
+                    <li>생성된 <strong>클라이언트 ID</strong>를 복사하여 위 입력란에 붙여넣고 저장하세요.</li>
+                  </ol>
+                </div>
+
+                {/* 모달 하단 버튼 */}
+                <div className="flex justify-between items-center pt-2 border-t border-slate-200">
+                  <div>
+                    {googleClientId && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          localStorage.removeItem('google_client_id');
+                          setGoogleClientId('');
+                          setGoogleClientIdInput('');
+                          showToast("Google Client ID가 삭제되었습니다.", "success");
+                        }}
+                        className="skeuo-btn px-2.5 py-1.5 text-xs font-bold text-rose-600"
+                      >
+                        ID 삭제
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowGoogleModal(false)}
+                      className="skeuo-btn px-3 py-1.5 text-xs font-bold text-slate-600"
+                    >
+                      취소
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const trimmed = googleClientIdInput.trim();
+                        if (trimmed) {
+                          localStorage.setItem('google_client_id', trimmed);
+                          setGoogleClientId(trimmed);
+                          showToast("Google Client ID가 성공적으로 저장되었습니다! 구글 SSO가 활성화되었습니다.", "success");
+                        } else {
+                          localStorage.removeItem('google_client_id');
+                          setGoogleClientId('');
+                          showToast("Client ID가 비워져 구글 SSO가 비활성화되었습니다.", "info");
+                        }
+                        setShowGoogleModal(false);
+                      }}
+                      className="skeuo-btn skeuo-btn-teal px-4 py-1.5 text-xs font-bold text-white"
+                    >
+                      설정 저장 및 활성화 ➔
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {toast.show && (
             <div className={`fixed top-24 left-1/2 -translate-x-1/2 z-50 px-6 py-3 border-4 border-black shadow-[4px_4px_0_0_#000] font-black text-sm transition-all text-center w-11/12 max-w-sm ${toast.type === 'error' ? 'bg-[#FF3B30] text-white' : 'bg-[#00C4B3] text-black'}`}>
               {toast.message}
@@ -2872,15 +3193,95 @@ ${feedbackList.slice(-3).join('\n')}
 
           <main className="flex-1 max-w-3xl w-full mx-auto mt-6 px-4">
             
-            {/* LOGIN VIEW (스큐어모피즘 어학기 전면 패널) */}
+            {/* LOGIN VIEW (스큐어모피즘 어학기 전면 패널 & 구글 SSO) */}
             {examState === 'login' && (
               <div className="skeuo-deck p-6 sm:p-9 text-center space-y-6 max-w-md mx-auto animate-fade-in mt-6">
                 <div className="border-b border-slate-200 pb-4">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl skeuo-btn mb-2 text-2xl">
-                    📝
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl skeuo-btn mb-2 text-2xl shadow-sm">
+                    🎧
                   </div>
-                  <h2 className="text-xl font-black text-slate-800 tracking-tight">수험생 정보 등록</h2>
-                  <p className="text-xs font-medium text-slate-500 mt-1">학급 듣기평가 및 맞춤 훈련을 위해 정보를 입력하세요.</p>
+                  <h2 className="text-xl font-black text-slate-800 tracking-tight">수험생 접속 & Google SSO</h2>
+                  <p className="text-xs font-medium text-slate-500 mt-1">학급 듣기평가 및 맞춤 훈련을 위해 로그인하세요.</p>
+                </div>
+
+                {/* 1. Google SSO 원클릭 로그인 섹션 */}
+                <div className="space-y-3">
+                  {googleUser ? (
+                    /* 구글 계정 인증 완료 상태 카드 */
+                    <div className="skeuo-inset p-3.5 bg-teal-50/70 border border-teal-200 rounded-xl flex items-center justify-between text-left">
+                      <div className="flex items-center gap-3">
+                        {googleUser.picture ? (
+                          <img src={googleUser.picture} alt="Profile" className="w-10 h-10 rounded-full ring-2 ring-teal-500 shadow-sm" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-teal-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                            G
+                          </div>
+                        )}
+                        <div className="leading-tight">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black text-slate-800">{googleUser.name}</span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-teal-600 text-white shadow-xs">Google 인증됨</span>
+                          </div>
+                          <span className="text-[11px] text-slate-500 font-mono block mt-0.5 truncate max-w-[170px]">{googleUser.email}</span>
+                        </div>
+                      </div>
+                      <button 
+                        type="button" 
+                        onClick={handleGoogleLogout}
+                        className="skeuo-btn text-[11px] font-bold px-2 py-1 text-slate-500 hover:text-rose-600"
+                        title="다른 구글 계정으로 전환"
+                      >
+                        계정 변경
+                      </button>
+                    </div>
+                  ) : (
+                    /* 구글 원클릭 로그인 대기/버튼 상태 */
+                    <div className="space-y-2">
+                      {/* GIS SDK 렌더링 컨테이너 */}
+                      <div id="google-signin-btn-container" className="flex justify-center min-h-[42px] empty:hidden"></div>
+                      
+                      {/* 스큐어모피즘 구글 맞춤 버튼 */}
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          if (googleClientId && window.google?.accounts?.id) {
+                            window.google.accounts.id.prompt();
+                          } else {
+                            setShowGoogleModal(true);
+                          }
+                        }}
+                        className="skeuo-btn w-full py-3 px-4 flex items-center justify-center gap-3 bg-white hover:bg-slate-50 transition-all font-black text-slate-700 text-sm shadow-sm border border-slate-300"
+                      >
+                        <svg className="w-4 h-4" viewBox="0 0 24 24">
+                          <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                          <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
+                          <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                          <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                        </svg>
+                        <span>Google 계정으로 계속하기</span>
+                      </button>
+
+                      <div className="flex justify-between items-center px-1 text-[11px] text-slate-500 font-medium">
+                        <span>{googleClientId ? '🟢 Google Client ID 준비됨' : '⚪ Client ID 미등록'}</span>
+                        <button 
+                          type="button" 
+                          onClick={() => { setGoogleClientIdInput(googleClientId); setShowGoogleModal(true); }}
+                          className="text-teal-700 hover:text-teal-900 font-bold underline"
+                        >
+                          ⚙️ Client ID 설정
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 수동 입력 안내 구분선 */}
+                  <div className="relative flex py-2 items-center">
+                    <div className="flex-grow border-t border-slate-300"></div>
+                    <span className="flex-shrink mx-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      {googleUser ? "소속 학급 정보 입력" : "또는 수동 정보 입력"}
+                    </span>
+                    <div className="flex-grow border-t border-slate-300"></div>
+                  </div>
                 </div>
 
                 <div className="space-y-4 text-left">
@@ -2919,7 +3320,14 @@ ${feedbackList.slice(-3).join('\n')}
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold text-slate-600 block mb-1">성명 (이름)</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-slate-600 block">성명 (이름)</label>
+                      {googleUser && (
+                        <span className="text-[10px] font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                          Google 계정 자동 입력됨
+                        </span>
+                      )}
+                    </div>
                     <input 
                       type="text" 
                       value={studentInfo.name} 
@@ -2932,9 +3340,9 @@ ${feedbackList.slice(-3).join('\n')}
 
                 <button 
                   onClick={handleLogin} 
-                  className="skeuo-btn skeuo-btn-teal w-full py-4 text-base font-black tracking-wide"
+                  className="skeuo-btn skeuo-btn-teal w-full py-4 text-base font-black tracking-wide shadow-md"
                 >
-                  수험생 데스크 접속 ➔
+                  {googleUser ? '수험생 데스크 접속 & Google 연동 ➔' : '수험생 데스크 접속 ➔'}
                 </button>
 
                 <div className="pt-4 border-t border-dashed border-slate-300">
@@ -2970,13 +3378,34 @@ ${feedbackList.slice(-3).join('\n')}
                   {/* 플레이어 카드 (카세트 테이프/CD 라벨 스타일) */}
                   <div className="flex-1 skeuo-inset p-5 relative flex flex-col justify-between">
                     <div className="flex items-start justify-between">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-teal-300 shadow-sm">
-                          Student Profile
-                        </span>
-                        <h2 className="text-2xl font-black text-slate-800 mt-2">
-                          {studentInfo.name} <span className="text-xs font-bold text-slate-500">({studentInfo.schoolGrade}학년 {studentInfo.classNum}반)</span>
-                        </h2>
+                      <div className="flex items-start gap-3">
+                        {googleUser?.picture ? (
+                          <img src={googleUser.picture} alt="Google Avatar" className="w-12 h-12 rounded-2xl ring-2 ring-teal-500 shadow-md mt-1" />
+                        ) : null}
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-teal-300 shadow-sm">
+                              Student Profile
+                            </span>
+                            {googleUser && (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 flex items-center gap-1">
+                                <svg className="w-2.5 h-2.5" viewBox="0 0 24 24">
+                                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.8-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.34 24 12 24z"/>
+                                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.98 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.34 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                                </svg>
+                                <span>Google SSO</span>
+                              </span>
+                            )}
+                          </div>
+                          <h2 className="text-2xl font-black text-slate-800 mt-1">
+                            {studentInfo.name} <span className="text-xs font-bold text-slate-500">({studentInfo.schoolGrade}학년 {studentInfo.classNum}반 {studentInfo.studentNum}번)</span>
+                          </h2>
+                          {googleUser?.email && (
+                            <span className="text-[11px] font-mono text-slate-500 block">{googleUser.email}</span>
+                          )}
+                        </div>
                       </div>
                       <div className="w-14 h-14 skeuo-btn flex flex-col items-center justify-center rounded-2xl shadow-sm border-teal-500/30">
                         <span className="text-[9px] font-bold text-slate-500 uppercase">Level</span>
