@@ -1036,6 +1036,24 @@
         return null;
       };
 
+      // 대본 내 지문/상황묘사/효과음/괄호 설명 완벽 제거 및 순수 발화 대사 추출
+      const cleanDialogueSpeech = (rawText) => {
+        if (!rawText) return "";
+        let text = rawText;
+        // 1. 화자 태그 제거 (M:, W:, Man:, Woman:, [M], (W) 등)
+        text = text.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|Boy|Girl|Speaker\s*\d*|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '');
+        // 2. 괄호 지문 및 상황묘사 제거 (소괄호, 대괄호, 꺾쇠, 별표, 중괄호)
+        text = text.replace(/\([^)]*\)/g, ' '); // (smiling), (sighs), (pause), (phone ringing) 등
+        text = text.replace(/\[[^\]]*\]/g, ' '); // [laughs], [Narrator], [sound of footsteps] 등
+        text = text.replace(/<[^>]*>/g, ' ');
+        text = text.replace(/\{[^}]*\}/g, ' ');
+        text = text.replace(/\*[^*]+\*/g, ' '); // *whispers* 등
+        text = text.replace(/_[^_]+_/g, ' ');
+        // 3. 특수기호 및 여백 정리
+        text = text.replace(/\s+/g, ' ').trim();
+        return text;
+      };
+
       // STT (Shadowing) 상태
       const [recordingId, setRecordingId] = useState(null);
       const [recognizedTextMap, setRecognizedTextMap] = useState({});
@@ -1481,29 +1499,27 @@
         const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === activeMaleVoiceName) || GOOGLE_AI_VOICES.male[1];
         const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === activeFemaleVoiceName) || GOOGLE_AI_VOICES.female[1];
 
-        const lines = item.transcript.split('\n').filter(l => l.trim().length > 0);
+        // 1. 대본 정제 및 발화자/대사 리스트 구조화 (상황묘사/지문/효과음 지시문 완전 제거)
+        const rawLines = item.transcript.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        const parsedDialogueList = [];
         let currentSpeaker = null;
 
-        for (let idx = 0; idx < lines.length; idx++) {
-          if (sequenceCancelledRef.current) break;
-          const line = lines[idx];
-          const speakerMatch = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:/i);
-          let isMale = false; 
-          let isFemale = false; 
-          let cleanText = line;
+        for (const rawLine of rawLines) {
+          const speakerMatch = rawLine.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|Boy|Girl|Speaker\s*\d*|남|여|남자|여자)[\s\*\]\>\)]*:/i);
+          let isMale = false;
+          let isFemale = false;
 
           if (speakerMatch) {
             const speakerLabel = speakerMatch[1].toLowerCase();
-            if (speakerLabel.startsWith('m') || speakerLabel.startsWith('남')) {
+            if (speakerLabel.startsWith('m') || speakerLabel.startsWith('남') || speakerLabel.startsWith('b')) {
               isMale = true;
               currentSpeaker = 'M';
             } else {
               isFemale = true;
               currentSpeaker = 'W';
             }
-            cleanText = line.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '').trim();
           } else {
-            // 2인 대화에서 화자 태그가 누락되었을 경우 남-녀 교차(Alternating) 엄격 적용
+            // 화자 태그가 생략된 경우 교차 배정
             if (currentSpeaker === 'M') {
               isFemale = true;
               currentSpeaker = 'W';
@@ -1513,17 +1529,52 @@
             }
           }
 
+          // 상황묘사, 괄호 지문, 효과음 지시문 완전 제거
+          const speechOnly = cleanDialogueSpeech(rawLine);
+
+          // 지문만 있어서 정제 후 내용이 비어있거나 영어 알파벳이 없는 경우 재생 목록에서 스킵
+          if (!speechOnly || !/[a-zA-Z]/.test(speechOnly)) {
+            continue;
+          }
+
           const targetAiVoiceName = isMale ? activeMaleVoiceName : activeFemaleVoiceName;
           const currentVoiceObj = isMale ? maleVoice : femaleVoice;
+
+          parsedDialogueList.push({
+            isMale,
+            isFemale,
+            speechText: speechOnly,
+            targetAiVoiceName,
+            currentVoiceObj
+          });
+        }
+
+        // 2. 전체 대화 오디오 백그라운드 프리페치 (Lookahead Pre-fetching)
+        // 첫 문장 시작 전 전체 대사의 TTS를 병렬로 미리 요청/캐싱하여 대화 간 버퍼링 지연을 0초로 단축
+        if (customApiKey && parsedDialogueList.length > 0) {
+          parsedDialogueList.forEach(turn => {
+            fetchGoogleAiNativeAudio(turn.speechText, turn.targetAiVoiceName).catch(() => {});
+          });
+        }
+
+        // 3. 실제 순차 재생 실행 (자연스러운 턴테이킹)
+        for (let idx = 0; idx < parsedDialogueList.length; idx++) {
+          if (sequenceCancelledRef.current) break;
+          const turn = parsedDialogueList[idx];
+
+          // 다음 문장 오디오 사전 로드 확인
+          if (customApiKey && idx + 1 < parsedDialogueList.length) {
+            fetchGoogleAiNativeAudio(parsedDialogueList[idx + 1].speechText, parsedDialogueList[idx + 1].targetAiVoiceName).catch(() => {});
+          }
 
           // 1순위: Google AI Studio 무료 API 네이티브 원어민 음성 시도
           let playedViaGoogleAi = false;
           if (customApiKey) {
-            const audioUrl = await fetchGoogleAiNativeAudio(cleanText, targetAiVoiceName);
+            const audioUrl = await fetchGoogleAiNativeAudio(turn.speechText, turn.targetAiVoiceName);
             if (audioUrl && !sequenceCancelledRef.current) {
               setActiveSpeakerIndicator({ 
-                role: isMale ? 'M' : 'W', 
-                name: `${targetAiVoiceName} (${isMale ? '남성' : '여성'})`, 
+                role: turn.isMale ? 'M' : 'W', 
+                name: `${turn.targetAiVoiceName} (${turn.isMale ? '남성' : '여성'})`, 
                 isGoogleAi: true 
               });
               await new Promise((resolve) => {
@@ -1549,22 +1600,20 @@
           // 2순위: 폴백 브라우저 Web Speech (남-녀 음성 객체 분리 & 극적 차별화 피치/속도 적용)
           if (!playedViaGoogleAi) {
             setActiveSpeakerIndicator({ 
-              role: isMale ? 'M' : 'W', 
-              name: currentVoiceObj ? currentVoiceObj.name : (isMale ? '시스템 남성 음성' : '시스템 여성 음성'), 
+              role: turn.isMale ? 'M' : 'W', 
+              name: turn.currentVoiceObj ? turn.currentVoiceObj.name : (turn.isMale ? '시스템 남성 음성' : '시스템 여성 음성'), 
               isGoogleAi: false 
             });
             await new Promise((resolve) => {
-              const utter = new SpeechSynthesisUtterance(cleanText);
+              const utter = new SpeechSynthesisUtterance(turn.speechText);
               utter.lang = langCode;
 
-              if (isMale) {
+              if (turn.isMale) {
                 if (maleVoice) utter.voice = maleVoice;
-                // 동일 voice일 경우에도 굵은 톤과 0.88x의 차분한 템포로 남성 특화
                 utter.pitch = Math.min(maleProfile.pitch || 0.80, 0.72);
                 utter.rate = playbackRate * (isSameVoice ? 0.88 : (maleProfile.rate || 0.96));
               } else {
                 if (femaleVoice) utter.voice = femaleVoice;
-                // 동일 voice일 경우에도 맑고 높은 피치와 1.15x의 생동감 있는 템포로 여성 특화
                 utter.pitch = Math.max(femaleProfile.pitch || 1.15, 1.30);
                 utter.rate = playbackRate * (isSameVoice ? 1.15 : (femaleProfile.rate || 1.04));
               }
@@ -1583,9 +1632,9 @@
 
           setActiveSpeakerIndicator(null);
 
-          // 대사 간 자연스러운 0.35초 호흡 간격
-          if (idx < lines.length - 1 && !sequenceCancelledRef.current) {
-            await new Promise(r => setTimeout(r, 350));
+          // 대사 간 실제 사람의 자연스러운 호흡 턴테이킹 간격 (0.16초)
+          if (idx < parsedDialogueList.length - 1 && !sequenceCancelledRef.current) {
+            await new Promise(r => setTimeout(r, 160));
           }
         }
 
@@ -1622,15 +1671,17 @@
         const blank = (item.saBlankWord || '').toLowerCase().trim();
         
         // 빈칸 단어가 포함된 문장 탐색
-        let targetLine = lines.find(l => l.toLowerCase().includes(blank)) || lines[0] || item.transcript;
+        let rawTargetLine = lines.find(l => l.toLowerCase().includes(blank)) || lines[0] || item.transcript;
         
-        const speakerMatch = targetLine.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:/i);
+        const speakerMatch = rawTargetLine.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:/i);
         let isMale = false;
         if (speakerMatch) {
           const l = speakerMatch[1].toLowerCase();
           if (l.startsWith('m') || l.startsWith('남')) isMale = true;
-          targetLine = targetLine.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '').trim();
         }
+        
+        // 괄호 지문/상황묘사/효과음 완전 제거한 실제 대사만 추출
+        const targetLine = cleanDialogueSpeech(rawTargetLine);
 
         showToast(`[구간반복] 빈칸 [${item.saBlankWord}] 핵심 문장을 재생합니다.`, "success");
 
@@ -1707,19 +1758,21 @@
         stopSpeech();
         if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e){} }
 
-        // 대본을 파싱하여 발화자 분리
-        const lines = item.transcript.split('\n').filter(l => l.trim().length > 0).map((line, idx) => {
-          const match = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:(.*)/i);
-          let speaker = 'W';
-          let text = line;
-          if (match) {
-            const s = match[1].toLowerCase();
-            if(s.startsWith('m') || s.startsWith('남')) speaker = 'M';
-            else speaker = 'W';
-            text = match[2].trim();
-          }
-          return { idx, speaker, text, original: line };
-        });
+        // 대본을 파싱하여 발화자 분리 및 괄호 지문/상황묘사 제거
+        const lines = item.transcript.split('\n')
+          .filter(l => l.trim().length > 0)
+          .map((line, idx) => {
+            const match = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:(.*)/i);
+            let speaker = 'W';
+            if (match) {
+              const s = match[1].toLowerCase();
+              if(s.startsWith('m') || s.startsWith('남')) speaker = 'M';
+              else speaker = 'W';
+            }
+            const cleanText = cleanDialogueSpeech(line);
+            return { idx, speaker, text: cleanText, original: line };
+          })
+          .filter(l => l.text && /[a-zA-Z]/.test(l.text));
 
         setRpState({
           activeId: item.id,
@@ -2130,6 +2183,11 @@ ${spokenText}
         - 발화 순서는 무조건 남-녀가 번갈아 가며 교차(Alternating)해야 함 (예: M -> W -> M -> W 또는 W -> M -> W -> M).
         - 각 발화가 바뀔 때마다 반드시 줄바꿈(엔터)을 하고, 줄의 시작은 반드시 'M:' 또는 'W:'로 명시할 것.
         
+        [대본 작성 및 지문/상황묘사 절대 금지 규칙 - 100% 실제 발화 대사만 작성]
+        - 대본(transcript)에는 실제 입으로 발화하는 순수 대사만 작성할 것!
+        - 절대로 (smiling), (sighs), (laughs), (pause), (phone rings), [Narrator], [sound of footsteps] 등과 같은 괄호 지문, 상황 묘사, 효과음 표현을 대본에 포함하지 말 것!
+        - 음성 합성 엔진(TTS)이 대본을 그대로 읽으므로, 모든 문장은 화자가 입 밖으로 소리 내어 말하는 완전한 영어 문장으로만 구성되어야 함.
+
         [독백형 문항 규칙]
         - 독백형 문항(1문항)은 화자가 1명이며 줄의 시작을 'M:' 또는 'W:' 중 하나로만 시작하여 끝까지 이어질 것.
         
