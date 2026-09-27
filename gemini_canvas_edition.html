@@ -631,15 +631,16 @@
         try { return atob(encoded); } catch(e) { return ''; }
       };
       const DEFAULT_SECURE_UPSTAGE = "dXNfVFRQbnBZOWxKTk1wZkRqWmxwcnlYQkNPSEYzNkk=";
+      const DEFAULT_SECURE_GEMINI = "QUl6YVN5RHpMRDV4S0ROVUtvTVJ4djMzUWppMldQaHEta0JPVVpz";
 
       // AI 엔진 선택 및 키 관리 (듀얼 엔진: Upstage Solar Pro vs Google Gemini)
       const [aiEngine, setAiEngine] = useState(() => localStorage.getItem('ai_engine_type') || 'upstage'); // 기본값: 업스테이지 Solar Pro
       const [upstageApiKey, setUpstageApiKey] = useState(() => localStorage.getItem('upstage_api_key') || decodeSecureKey(DEFAULT_SECURE_UPSTAGE));
       const [upstageKeyInput, setUpstageKeyInput] = useState(() => localStorage.getItem('upstage_api_key') || decodeSecureKey(DEFAULT_SECURE_UPSTAGE));
 
-      // Gemini API Key 설정 상태 (자체 키 연동)
-      const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || '');
-      const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || '');
+      // Gemini API Key 설정 상태 (Google AI Studio 무료 API 키 기본 안전 연동)
+      const [customApiKey, setCustomApiKey] = useState(() => localStorage.getItem('gemini_api_key') || decodeSecureKey(DEFAULT_SECURE_GEMINI));
+      const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || decodeSecureKey(DEFAULT_SECURE_GEMINI));
       const [showKeyModal, setShowKeyModal] = useState(false);
 
       // Google AI Studio 공식 음성 라인업 및 글로벌 잉글리시(Global English) 보이스 선택 상태
@@ -731,8 +732,7 @@
         }
 
         try {
-          // Google AI Studio 공식 무료 티어 Gemini 2.0 Flash 오디오 생성 엔드포인트
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+          // Google AI Studio 공식 고음질 네이티브 오디오 생성 엔드포인트
           const payload = {
             contents: [{
               parts: [{ text: `Speak this sentence naturally in clear native Global English: "${text}"` }]
@@ -749,11 +749,21 @@
             }
           };
 
-          const res = await fetch(url, {
+          // 1차 시도: gemini-2.5-flash-preview-tts (초고속 저지연)
+          let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${apiKey}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
+
+          // 2차 시도: gemini-3.8-flash-tts (최신 플래그십 폴백)
+          if (!res.ok) {
+            res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash-tts:generateContent?key=${apiKey}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+          }
 
           if (!res.ok) {
             console.warn("Google AI Audio API response status:", res.status);
@@ -918,7 +928,7 @@
         // 2. Google Gemini 호출 (엔진이 gemini이거나 Upstage 폴백 시)
         if (gKey) {
           try {
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${gKey}`;
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${gKey}`;
             const fullPrompt = systemPrompt ? `${systemPrompt}\n\n${userPrompt}` : userPrompt;
             const geminiBody = {
               contents: [{ parts: [{ text: fullPrompt }] }]
