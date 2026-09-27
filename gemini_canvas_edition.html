@@ -1281,7 +1281,7 @@
         return maleKeywords.some(k => n.includes(k)); 
       };
 
-      const resolveDisjointVoices = (rawVoices, targetMaleId, targetFemaleId, accent = 'us') => {
+      const resolveDisjointVoices = (rawVoices, targetMaleId = 'Puck', targetFemaleId = 'Aoede', accent = 'us') => {
         let voices = rawVoices;
         if (!voices || voices.length === 0) {
           if (typeof window !== 'undefined' && window.speechSynthesis) {
@@ -1289,7 +1289,12 @@
           }
         }
         if (!voices || voices.length === 0) {
-          return { maleVoice: null, femaleVoice: null, isSameVoice: true };
+          return { 
+            maleVoice: null, femaleVoice: null, 
+            maleSettings: { pitch: 0.80, rate: 0.98 }, 
+            femaleSettings: { pitch: 1.15, rate: 1.0 }, 
+            isSameVoice: true 
+          };
         }
 
         const engVoices = voices.filter(v => (v.lang || '').toLowerCase().startsWith('en'));
@@ -1298,21 +1303,37 @@
         const femalePool = pool.filter(v => isVoiceFemale(v.name));
         const malePool = pool.filter(v => isVoiceMale(v.name));
 
-        // 1. 남성 보이스 탐색 (UK / AU / US 액센트 선호도 반영)
-        let male = null;
-        if (targetMaleId === 'Fenrir' || accent === 'uk') {
-          male = malePool.find(v => (v.lang || '').toLowerCase().includes('gb') || v.name.toLowerCase().includes('uk') || v.name.toLowerCase().includes('ryan') || v.name.toLowerCase().includes('daniel'));
-        } else if (targetMaleId === 'Orus' || accent === 'au') {
-          male = malePool.find(v => (v.lang || '').toLowerCase().includes('au') || v.name.toLowerCase().includes('australia') || v.name.toLowerCase().includes('william'));
-        }
-        if (!male) male = malePool[0];
+        // 화자 ID별 최적의 시스템 보이스 검색 우선순위 및 오디오 프로필 매핑
+        const maleProfiles = {
+          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'google us', 'mark'], pitch: 0.95, rate: 1.02 },
+          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'google us'], pitch: 0.68, rate: 0.92 },
+          Fenrir: { keywords: ['ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb'], pitch: 0.86, rate: 1.0 },
+          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian'], pitch: 0.76, rate: 0.95 }
+        };
 
-        // 2. 여성 보이스 탐색 (남성과 다른 객체 필수)
+        const femaleProfiles = {
+          Aoede: { keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.25, rate: 1.02 },
+          Kore: { keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.02, rate: 0.94 },
+          Leda: { keywords: ['sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb'], pitch: 1.20, rate: 0.98 },
+          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au'], pitch: 1.10, rate: 0.96 }
+        };
+
+        const mProf = maleProfiles[targetMaleId] || maleProfiles.Puck;
+        const fProf = femaleProfiles[targetFemaleId] || femaleProfiles.Aoede;
+
+        // 1. 선택된 남성 화자 객체 탐색
+        let male = null;
+        for (const kw of mProf.keywords) {
+          male = malePool.find(v => v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw));
+          if (male) break;
+        }
+        if (!male) male = malePool[0] || pool[0];
+
+        // 2. 선택된 여성 화자 객체 탐색 (남성과 겹치지 않는 다른 객체 필수)
         let female = null;
-        if (targetFemaleId === 'Leda' || accent === 'uk') {
-          female = femalePool.find(v => ((v.lang || '').toLowerCase().includes('gb') || v.name.toLowerCase().includes('uk') || v.name.toLowerCase().includes('sonia')) && (!male || v.name !== male.name));
-        } else if (targetFemaleId === 'Mimosa' || accent === 'au') {
-          female = femalePool.find(v => ((v.lang || '').toLowerCase().includes('au') || v.name.toLowerCase().includes('australia') || v.name.toLowerCase().includes('natasha')) && (!male || v.name !== male.name));
+        for (const kw of fProf.keywords) {
+          female = femalePool.find(v => (v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw)) && (!male || v.name !== male.name));
+          if (female) break;
         }
         if (!female) {
           female = femalePool.find(v => !male || v.name !== male.name);
@@ -1337,7 +1358,13 @@
         }
 
         const isSame = male && female && male.name === female.name;
-        return { maleVoice: male, femaleVoice: female, isSameVoice: isSame };
+        return { 
+          maleVoice: male, 
+          femaleVoice: female, 
+          maleSettings: mProf, 
+          femaleSettings: fProf, 
+          isSameVoice: isSame 
+        };
       };
 
       const findSafeVoice = (voices, langCode, isFemale, isMale) => {
@@ -1485,8 +1512,8 @@
         const activeMaleVoiceName = aiMaleVoice === 'random' ? malePool[Math.floor(Math.random() * malePool.length)] : aiMaleVoice;
         const activeFemaleVoiceName = aiFemaleVoice === 'random' ? femalePool[Math.floor(Math.random() * femalePool.length)] : aiFemaleVoice;
 
-        // 100% 남/녀 음성 분리 보장 (Zero-Collision 매핑)
-        const { maleVoice, femaleVoice, isSameVoice } = resolveDisjointVoices(voices, activeMaleVoiceName, activeFemaleVoiceName, item.accent);
+        // 100% 남/녀 음성 분리 보장 (Zero-Collision 매핑 & 화자별 맞춤 피치/속도 프로필)
+        const { maleVoice, femaleVoice, maleSettings, femaleSettings, isSameVoice } = resolveDisjointVoices(voices, activeMaleVoiceName, activeFemaleVoiceName, item.accent);
 
         const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === activeMaleVoiceName) || GOOGLE_AI_VOICES.male[1];
         const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === activeFemaleVoiceName) || GOOGLE_AI_VOICES.female[1];
@@ -1599,25 +1626,29 @@
 
           if (sequenceCancelledRef.current) break;
 
-          // 2순위: 폴백 브라우저 Web Speech (남-녀 음성 객체 분리 & 극적 차별화 피치/속도 적용)
+          // 2순위: 폴백 브라우저 Web Speech (선택한 화자 ID별 고유 음성 객체, 액센트 및 피치/속도 프로필 100% 반영)
           if (!playedViaGoogleAi) {
+            const currentVoice = turn.isMale ? maleVoice : femaleVoice;
+            const currentSetting = turn.isMale ? maleSettings : femaleSettings;
+            const chosenVoiceId = turn.isMale ? activeMaleVoiceName : activeFemaleVoiceName;
+            const voiceDisplayName = currentVoice ? `${chosenVoiceId} (${currentVoice.name})` : (turn.isMale ? `${chosenVoiceId} (남성)` : `${chosenVoiceId} (여성)`);
+
             setActiveSpeakerIndicator({ 
               role: turn.isMale ? 'M' : 'W', 
-              name: turn.currentVoiceObj ? turn.currentVoiceObj.name : (turn.isMale ? '시스템 남성 음성' : '시스템 여성 음성'), 
+              name: voiceDisplayName, 
               isGoogleAi: false 
             });
             await new Promise((resolve) => {
               const utter = new SpeechSynthesisUtterance(turn.speechText);
-              utter.lang = langCode;
+              utter.lang = (currentVoice && currentVoice.lang) ? currentVoice.lang : langCode;
+              if (currentVoice) utter.voice = currentVoice;
 
               if (turn.isMale) {
-                if (maleVoice) utter.voice = maleVoice;
-                utter.pitch = Math.min(maleProfile.pitch || 0.80, 0.72);
-                utter.rate = playbackRate * (isSameVoice ? 0.88 : (maleProfile.rate || 0.96));
+                utter.pitch = currentSetting.pitch || 0.80;
+                utter.rate = playbackRate * (isSameVoice ? 0.88 : (currentSetting.rate || 0.98));
               } else {
-                if (femaleVoice) utter.voice = femaleVoice;
-                utter.pitch = Math.max(femaleProfile.pitch || 1.15, 1.30);
-                utter.rate = playbackRate * (isSameVoice ? 1.15 : (femaleProfile.rate || 1.04));
+                utter.pitch = currentSetting.pitch || 1.15;
+                utter.rate = playbackRate * (isSameVoice ? 1.15 : (currentSetting.rate || 1.0));
               }
 
               utter.onend = resolve;
@@ -2205,7 +2236,11 @@ ${spokenText}
         - 응답형 문항의 경우, 수능 원안 형식과 동일하게 mcOptions 5개 보기를 반드시 '자연스러운 영어 문장'으로 작성할 것! 나머지 2문제는 한글 보기로 작성할 것.
         - standardType 필드에 '1. 목적 파악', '5. 할 일 파악', '6. 이유 파악', '7. 숫자/금액 계산', '11. 짧은 대화 응답', '13. 긴 대화 응답' 중 해당하는 표준 유형명을 명시할 것.
         - 객관식(mcQuestion): 실제 기출문제 형태의 한글 발문 (예: '대화를 듣고, 남자의 마지막 말에 대한 여자의 응답으로 가장 적절한 것을 고르시오.').
-        - 주관식(saAcceptedAnswers): 빈칸에 들어갈 영어 단어 하나(딕테이션).
+        [주관식 DICTATION(빈칸 받아쓰기) 절대 규칙 - 대본 속 정확한 단어 1개]
+        - saBlankWord: 반드시 위에서 작성한 본문 대본(transcript) 속에 실제로 소리 내어 말한 '단 1개의 핵심 영어 단어(Single Word)'로만 지정할 것! (공백이나 두 단어 이상, 대본에 없는 단어 절대 금지).
+        - saQuestion: 본문 대본(transcript) 속에서 해당 saBlankWord 단어가 포함된 실제 전체 문장을 그대로 가져오고, 그 단어 위치만 '______'로 치환하여 작성할 것!
+        - saAcceptedAnswers: 학생이 입력할 수 있는 대소문자 변형을 포함한 배열 (예: ["July", "july"]).
+        - saHint: 해당 단어의 품사 및 한국어 뜻 힌트 (예: "명사 - 7월을 뜻하는 영어 단어").
         - 단어장(vocabulary): 대본에서 사용된 가장 중요한 핵심 영단어 또는 숙어 3~4개를 추출하여 뜻과 함께 제공해 주세요.
         
         [출력 JSON 규격]
@@ -3791,7 +3826,7 @@ ${feedbackList.slice(-3).join('\n')}
                       <div className="skeuo-inset p-4 space-y-2.5">
                         <div className="flex justify-between items-center text-xs">
                           <span className="font-bold text-slate-700 flex items-center gap-1">
-                            <span>✍️ DICTATION (빈칸 받아쓰기)</span>
+                            <span>✍️ DICTATION (대본 빈칸 단어 1개 받아쓰기)</span>
                           </span>
                           <span className="text-[11px] font-medium text-slate-500 bg-white/80 border border-slate-300 px-2 py-0.5 rounded shadow-inner">
                             🔒 실전 시험 중 (힌트 잠김)
@@ -3802,7 +3837,7 @@ ${feedbackList.slice(-3).join('\n')}
                         </p>
                         <input 
                           type="text" 
-                          placeholder="들리는 핵심 영단어를 입력하세요 (채점 후 해설 및 핀포인트 구간반복 가능)" 
+                          placeholder="대본 속 빈칸(______)에 들어갈 영어 단어 1개를 입력하세요 (대소문자 무관)" 
                           value={answers[item.id]?.sa || ''} 
                           onChange={(e) => setAnswers(prev => ({ ...prev, [item.id]: { ...prev[item.id], sa: e.target.value } }))} 
                           className="w-full p-3 text-sm font-bold text-slate-800 bg-white border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-teal-500 shadow-inner transition-all" 
