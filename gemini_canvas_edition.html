@@ -880,6 +880,53 @@
         setTimeout(() => setToast(prev => ({ ...prev, show: false })), 4000);
       };
 
+      // [신규] 이전 단계로 스마트하게 돌아가는 핸들러
+      const handleGoBack = () => {
+        stopSpeech();
+        if (examState === 'taking') {
+          const confirmLeave = window.confirm("진행 중인 시험을 중단하고 메인 대시보드로 돌아가시겠습니까?");
+          if (!confirmLeave) return;
+          setExamState('idle');
+          showToast("시험을 중단하고 대시보드로 돌아왔습니다.", "info");
+          return;
+        }
+        if (examState === 'result') {
+          setExamState('idle');
+          setHasSubmitted(false);
+          fetchStudentStats();
+          return;
+        }
+        if (examState === 'idle') {
+          setExamState('login');
+          return;
+        }
+        if (examState === 'teacher_login') {
+          setExamState('login');
+          return;
+        }
+        if (examState === 'teacher_dashboard') {
+          setExamState('login');
+          return;
+        }
+        if (examState === 'generating' || examState === 'evaluating') {
+          setExamState('idle');
+          return;
+        }
+      };
+
+      const getPreviousStepName = () => {
+        switch (examState) {
+          case 'taking': return '홈으로';
+          case 'result': return '대시보드로';
+          case 'idle': return '로그인으로';
+          case 'teacher_login': return '학생 로그인으로';
+          case 'teacher_dashboard': return '학생 모드로';
+          case 'generating':
+          case 'evaluating': return '취소 후 홈으로';
+          default: return '이전 단계로';
+        }
+      };
+
       // [신규 고도화] 통합 멀티 AI 엔진 호출기 (Upstage Solar Pro vs Google Gemini)
       const callUnifiedLlm = async ({ systemPrompt, userPrompt, responseFormatJson = false, geminiSchema = null }) => {
         const currentEngine = aiEngine; // 'upstage' | 'gemini'
@@ -2238,6 +2285,19 @@ ${feedbackList.slice(-3).join('\n')}
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {/* [신규] 이전 단계로 돌아가기 글로벌 버튼 */}
+                {examState !== 'login' && (
+                  <button
+                    type="button"
+                    onClick={handleGoBack}
+                    className="skeuo-btn text-xs font-black px-3 py-1.5 flex items-center gap-1.5 text-slate-800 hover:text-teal-800 shadow-xs border border-slate-300"
+                    title={`${getPreviousStepName()} 돌아가기`}
+                  >
+                    <span className="text-sm font-black text-teal-700">◀</span>
+                    <span>{getPreviousStepName()}</span>
+                  </button>
+                )}
+
                 {/* 인쇄 버튼 (결과 모드일 때만 활성화) */}
                 {examState === 'result' && (
                   <button
@@ -3012,6 +3072,16 @@ ${feedbackList.slice(-3).join('\n')}
                       >
                         배속: {playbackRate.toFixed(1)}x
                       </button>
+
+                      {/* [신규] 시험 중단 및 홈으로 돌아가기 버튼 */}
+                      <button 
+                        type="button"
+                        onClick={handleGoBack} 
+                        className="skeuo-btn text-xs font-bold px-3 py-1.5 text-rose-700 hover:text-rose-900 border border-rose-300 flex items-center gap-1"
+                        title="시험을 중단하고 메인 대시보드로 돌아갑니다."
+                      >
+                        <span>◀ 시험 중단</span>
+                      </button>
                     </div>
                   </div>
 
@@ -3207,6 +3277,15 @@ ${feedbackList.slice(-3).join('\n')}
                       </h2>
                     </div>
                     <div className="flex gap-2">
+                      <button 
+                        type="button"
+                        onClick={handleGoBack} 
+                        className="skeuo-btn px-3 py-1.5 text-xs font-black flex items-center gap-1.5 text-slate-800 hover:text-teal-800 border border-slate-300"
+                        title="메인 대시보드로 돌아가기"
+                      >
+                        <span className="text-teal-700 font-bold">◀</span>
+                        <span>대시보드로</span>
+                      </button>
                       <button 
                         onClick={() => window.print()} 
                         className="skeuo-btn px-3 py-1.5 text-xs font-bold flex items-center gap-1.5 text-slate-700"
@@ -3664,9 +3743,11 @@ ${feedbackList.slice(-3).join('\n')}
                       </button>
                       <button 
                         onClick={() => setExamState('login')} 
-                        className="skeuo-btn px-3 py-2 text-xs font-bold text-slate-600"
+                        className="skeuo-btn px-3 py-2 text-xs font-black text-slate-700 flex items-center gap-1 hover:text-teal-800 border border-slate-300"
+                        title="수험생 화면으로 돌아가기"
                       >
-                        👤 수험생 모드
+                        <span className="text-teal-700 font-bold">◀</span>
+                        <span>수험생 모드로</span>
                       </button>
                     </div>
                   </div>
