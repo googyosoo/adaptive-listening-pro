@@ -642,26 +642,147 @@
       const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || '');
       const [showKeyModal, setShowKeyModal] = useState(false);
 
-      // Google AI Studio 공식 음성 라인업 및 보이스 선택 상태
+      // Google AI Studio 공식 음성 라인업 및 글로벌 잉글리시(Global English) 보이스 선택 상태
       const GOOGLE_AI_VOICES = {
         male: [
-          { id: 'Puck', name: 'Puck (퍽)', desc: '자연스럽고 생생한 미국식 청년/남학생 톤 (활기참)', pitch: 0.82, rate: 0.98 },
-          { id: 'Charon', name: 'Charon (카론)', desc: '중후하고 신뢰감 있는 깊은 남성 톤 (교사/전문가/안내)', pitch: 0.72, rate: 0.95 },
-          { id: 'Fenrir', name: 'Fenrir (펜리르)', desc: '에너지 넘치고 자모음 발음이 또렷한 남성 톤', pitch: 0.86, rate: 1.02 },
-          { id: 'Orus', name: 'Orus (오루스)', desc: '지적이고 차분한 학술/뉴스 앵커 톤', pitch: 0.78, rate: 0.96 }
+          { id: 'random', name: '🎲 [랜덤] 매번 다양한 글로벌 남성 목소리', desc: 'Puck, Charon, Fenrir, Orus 중 문항 및 대화마다 랜덤 배정', pitch: 0.80, rate: 0.98 },
+          { id: 'Puck', name: '🇺🇸 Puck (퍽)', desc: '자연스럽고 생생한 미국식 청년/남학생 톤 (활기참)', pitch: 0.82, rate: 0.98 },
+          { id: 'Charon', name: '🇺🇸 Charon (카론)', desc: '중후하고 신뢰감 있는 깊은 남성 톤 (교사/전문가/안내)', pitch: 0.72, rate: 0.95 },
+          { id: 'Fenrir', name: '🇬🇧 Fenrir (펜리르)', desc: '영국/글로벌 스타일의 에너지 넘치고 또렷한 남성 톤', pitch: 0.86, rate: 1.02 },
+          { id: 'Orus', name: '🇦🇺 Orus (오루스)', desc: '호주/글로벌 스타일의 지적이고 차분한 학술/뉴스 앵커 톤', pitch: 0.78, rate: 0.96 }
         ],
         female: [
-          { id: 'Aoede', name: 'Aoede (아오이데)', desc: '맑고 친절하며 또렷한 미국식 여성 톤 (여학생/직원)', pitch: 1.18, rate: 1.0 },
-          { id: 'Kore', name: 'Kore (코레)', desc: '부드럽고 안정감 있는 성인 여성 톤 (어머니/상담사)', pitch: 1.08, rate: 0.97 },
-          { id: 'Leda', name: 'Leda (레다)', desc: '명확하고 전달력 높은 지적인 아나운서 스타일', pitch: 1.25, rate: 1.02 },
-          { id: 'Mimosa', name: 'Mimosa (미모사)', desc: '상냥하고 따뜻한 일상 회화 여성 톤', pitch: 1.12, rate: 0.98 }
+          { id: 'random', name: '🎲 [랜덤] 매번 다양한 글로벌 여성 목소리', desc: 'Aoede, Kore, Leda, Mimosa 중 문항 및 대화마다 랜덤 배정', pitch: 1.15, rate: 1.0 },
+          { id: 'Aoede', name: '🇺🇸 Aoede (아오이데)', desc: '맑고 친절하며 또렷한 미국식 여성 톤 (여학생/직원)', pitch: 1.18, rate: 1.0 },
+          { id: 'Kore', name: '🇺🇸 Kore (코레)', desc: '부드럽고 안정감 있는 성인 여성 톤 (어머니/상담사)', pitch: 1.08, rate: 0.97 },
+          { id: 'Leda', name: '🇬🇧 Leda (레다)', desc: '영국식 명확하고 전달력 높은 지적인 아나운서 스타일', pitch: 1.25, rate: 1.02 },
+          { id: 'Mimosa', name: '🇦🇺 Mimosa (미모사)', desc: '호주/글로벌 스타일의 상냥하고 따뜻한 일상 회화 여성 톤', pitch: 1.12, rate: 0.98 }
         ]
       };
 
-      const [aiMaleVoice, setAiMaleVoice] = useState(() => localStorage.getItem('ai_male_voice') || 'Puck');
-      const [aiFemaleVoice, setAiFemaleVoice] = useState(() => localStorage.getItem('ai_female_voice') || 'Aoede');
+      const [aiMaleVoice, setAiMaleVoice] = useState(() => localStorage.getItem('ai_male_voice') || 'random');
+      const [aiFemaleVoice, setAiFemaleVoice] = useState(() => localStorage.getItem('ai_female_voice') || 'random');
       const [aiKoreanVoice, setAiKoreanVoice] = useState(() => localStorage.getItem('ai_korean_voice') || 'auto');
       const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+      // Google AI Studio 실제 원어민 오디오 생성 및 캐싱 인프라
+      const currentAudioRef = useRef(null);
+      const audioCacheRef = useRef({});
+
+      // Gemini 오디오 PCM 24000Hz -> 브라우저 표준 WAV Blob 변환기
+      const pcmToWavBlobUrl = (base64Pcm, sampleRate = 24000) => {
+        try {
+          const binaryString = atob(base64Pcm);
+          const len = binaryString.length;
+          const pcmData = new Uint8Array(len);
+          for (let i = 0; i < len; i++) {
+            pcmData[i] = binaryString.charCodeAt(i);
+          }
+
+          const wavHeader = new ArrayBuffer(44);
+          const view = new DataView(wavHeader);
+
+          // RIFF identifier
+          view.setUint32(0, 0x52494646, false); // "RIFF"
+          view.setUint32(4, 36 + pcmData.length, true); // Chunk size
+          view.setUint32(8, 0x57415645, false); // "WAVE"
+
+          // fmt sub-chunk
+          view.setUint32(12, 0x666d7420, false); // "fmt "
+          view.setUint32(16, 16, true); // Subchunk1Size (16 for PCM)
+          view.setUint16(20, 1, true); // AudioFormat (1 for PCM)
+          view.setUint16(22, 1, true); // NumChannels (1: Mono)
+          view.setUint32(24, sampleRate, true); // SampleRate
+          view.setUint32(28, sampleRate * 2, true); // ByteRate
+          view.setUint16(32, 2, true); // BlockAlign
+          view.setUint16(34, 16, true); // BitsPerSample
+
+          // data sub-chunk
+          view.setUint32(36, 0x64617461, false); // "data"
+          view.setUint32(40, pcmData.length, true); // Subchunk2Size
+
+          const wavBlob = new Blob([wavHeader, pcmData], { type: 'audio/wav' });
+          return URL.createObjectURL(wavBlob);
+        } catch(e) {
+          console.error("PCM to WAV Conversion Error:", e);
+          return null;
+        }
+      };
+
+      // Google AI Studio 무료 API (Gemini 2.0 Flash) 실시간 네이티브 원어민 음성 합성기
+      const fetchGoogleAiNativeAudio = async (text, requestedVoiceId) => {
+        const apiKey = (customApiKey || "").trim();
+        if (!apiKey) return null; // Gemini API 키가 없을 경우 브라우저 Web Speech로 자동 폴백
+
+        // 'random'일 경우 실제 voiceName 매핑
+        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus'];
+        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa'];
+        let actualVoice = requestedVoiceId;
+        if (actualVoice === 'random') {
+          const combined = [...malePool, ...femalePool];
+          actualVoice = combined[Math.floor(Math.random() * combined.length)];
+        }
+
+        const cacheKey = `${actualVoice}:${text.trim()}`;
+        if (audioCacheRef.current[cacheKey]) {
+          return audioCacheRef.current[cacheKey];
+        }
+
+        try {
+          // Google AI Studio 공식 무료 티어 Gemini 2.0 Flash 오디오 생성 엔드포인트
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+          const payload = {
+            contents: [{
+              parts: [{ text: `Speak this sentence naturally in clear native Global English: "${text}"` }]
+            }],
+            generationConfig: {
+              responseModalities: ["AUDIO"],
+              speechConfig: {
+                voiceConfig: {
+                  prebuiltVoiceConfig: {
+                    voiceName: actualVoice
+                  }
+                }
+              }
+            }
+          };
+
+          const res = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (!res.ok) {
+            console.warn("Google AI Audio API response status:", res.status);
+            return null;
+          }
+
+          const data = await res.json();
+          const inlineData = data.candidates?.[0]?.content?.parts?.[0]?.inlineData;
+          if (inlineData && inlineData.data) {
+            const mime = inlineData.mimeType || 'audio/mp3';
+            let audioUrl;
+            if (mime.includes('pcm')) {
+              let rate = 24000;
+              const rateMatch = mime.match(/rate=(\d+)/);
+              if (rateMatch) rate = parseInt(rateMatch[1], 10);
+              audioUrl = pcmToWavBlobUrl(inlineData.data, rate);
+            } else {
+              audioUrl = `data:${mime};base64,${inlineData.data}`;
+            }
+
+            if (audioUrl) {
+              audioCacheRef.current[cacheKey] = audioUrl;
+              return audioUrl;
+            }
+          }
+        } catch(err) {
+          console.warn("Google AI Audio synthesis failed, falling back to browser TTS:", err);
+        }
+
+        return null;
+      };
 
       // STT (Shadowing) 상태
       const [recordingId, setRecordingId] = useState(null);
@@ -810,35 +931,38 @@
       };
 
       // 크로스 플랫폼 안전 보이스 탐색기 (남/녀 보이스 완벽 분리 및 Google AI Studio 톤 매핑)
+      // 크로스 플랫폼 안전 보이스 탐색기 (글로벌 잉글리시 및 남/녀 보이스 완벽 분리)
       const findSafeVoice = (voices, langCode, isFemale, isMale) => {
-        let matched = voices.filter(v => v.lang.toLowerCase().replace('_', '-').includes(langCode.toLowerCase()));
-        
-        // 특정 엑센트(UK 등)가 시스템에 없을 때 영문 일반(US)으로 안전 폴백
-        if (matched.length === 0 && langCode.includes('en')) {
-          matched = voices.filter(v => v.lang.toLowerCase().replace('_', '-').includes('en-us') || v.lang.startsWith('en'));
-        }
-        if (matched.length === 0) matched = voices;
+        let allEngVoices = (voices || []).filter(v => (v.lang || '').toLowerCase().startsWith('en'));
+        if (allEngVoices.length === 0) allEngVoices = voices || [];
 
         const isVoiceFemale = (name) => { 
-          const n = name.toLowerCase(); 
-          return n.includes('female') || ['zira', 'samantha', 'victoria', 'karen', 'susan', 'catherine', 'elsa', 'hazel', 'veena', 'tessa', 'google us english', 'serena', 'yuna', 'heami'].some(k => n.includes(k)); 
+          const n = (name || '').toLowerCase(); 
+          return n.includes('female') || ['zira', 'samantha', 'victoria', 'karen', 'susan', 'catherine', 'elsa', 'hazel', 'veena', 'tessa', 'serena', 'yuna', 'heami', 'ava', 'jenny', 'aria', 'michelle', 'stephanie'].some(k => n.includes(k)); 
         };
         const isVoiceMale = (name) => { 
-          const n = name.toLowerCase(); 
+          const n = (name || '').toLowerCase(); 
           if (n.includes('female')) return false; 
-          return n.includes('male') || ['david', 'alex', 'daniel', 'fred', 'mark', 'james', 'guy', 'arthur', 'aaron', 'brian', 'george', 'minsu'].some(k => n.includes(k)); 
+          return n.includes('male') || ['david', 'alex', 'daniel', 'fred', 'mark', 'james', 'guy', 'arthur', 'aaron', 'brian', 'george', 'minsu', 'andrew', 'christopher', 'eric', 'richard'].some(k => n.includes(k)); 
         };
 
-        const femaleVoices = matched.filter(v => isVoiceFemale(v.name));
-        const maleVoices = matched.filter(v => isVoiceMale(v.name));
+        const femalePool = allEngVoices.filter(v => isVoiceFemale(v.name));
+        const malePool = allEngVoices.filter(v => isVoiceMale(v.name));
 
         if (isFemale) {
-          return femaleVoices[0] || (maleVoices.length > 1 ? maleVoices[1] : matched[0]);
+          if (femalePool.length > 0) return femalePool[0];
+          // 여성 전용 키워드가 없을 때: 영문 보이스가 2개 이상이면 2번째 것을 여성으로 강제 배정
+          if (allEngVoices.length > 1) return allEngVoices[1];
+          return allEngVoices[0];
         }
+
         if (isMale) {
-          return maleVoices[0] || (femaleVoices.length > 1 ? femaleVoices[1] : matched[0]);
+          if (malePool.length > 0) return malePool[0];
+          // 남성 전용 키워드가 없을 때: 첫 번째 것을 남성으로 배정
+          return allEngVoices[0];
         }
-        return matched[0];
+
+        return allEngVoices[0] || (voices && voices[0]);
       };
 
       // 초고음질 자연스러운 한국어 발문 보이스 탐색기 (기계음 원천 차단 및 신경망 보이스 우선 선택)
@@ -893,9 +1017,21 @@
         if (!synthRef.current) { showToast("이 브라우저는 음성 합성을 지원하지 않습니다.", "error"); return; }
         
         if (isPauseToggle && playingId === item.id) {
-          if (synthRef.current.paused) { synthRef.current.resume(); setIsPaused(false); }
-          else if (synthRef.current.speaking) { synthRef.current.pause(); setIsPaused(true); }
-          return;
+          if (currentAudioRef.current) {
+            if (currentAudioRef.current.paused) {
+              currentAudioRef.current.play();
+              setIsPaused(false);
+            } else {
+              currentAudioRef.current.pause();
+              setIsPaused(true);
+            }
+            return;
+          }
+          if (synthRef.current) {
+            if (synthRef.current.paused) { synthRef.current.resume(); setIsPaused(false); }
+            else if (synthRef.current.speaking) { synthRef.current.pause(); setIsPaused(true); }
+            return;
+          }
         }
 
         // 실전 시험 중(taking)일 때 재생 횟수 2회 제한 검사
@@ -959,20 +1095,28 @@
           if (sequenceCancelledRef.current) return;
         }
 
-        // 3단계: 원어민 본문 대화/담화 재생 (남-녀 2인 대화 엄격 구분)
+        // 3단계: 원어민 본문 대화/담화 재생 (남-녀 2인 대화 엄격 구분 & Google AI Studio 무료 API 실시간 재생)
         setPlayingStage('body');
         const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
+
+        // 매 문항/대화마다 다채로운 글로벌 보이스 확정 (랜덤 모드 지원)
+        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus'];
+        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa'];
+        const activeMaleVoiceName = aiMaleVoice === 'random' ? malePool[Math.floor(Math.random() * malePool.length)] : aiMaleVoice;
+        const activeFemaleVoiceName = aiFemaleVoice === 'random' ? femalePool[Math.floor(Math.random() * femalePool.length)] : aiFemaleVoice;
+
         const maleVoice = findSafeVoice(voices, langCode, false, true);
         const femaleVoice = findSafeVoice(voices, langCode, true, false);
 
-        // Google AI Studio 보이스 프로필 로드
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[0];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[0];
+        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === activeMaleVoiceName) || GOOGLE_AI_VOICES.male[1];
+        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === activeFemaleVoiceName) || GOOGLE_AI_VOICES.female[1];
 
         const lines = item.transcript.split('\n').filter(l => l.trim().length > 0);
         let currentSpeaker = null;
 
-        lines.forEach((line, idx) => {
+        for (let idx = 0; idx < lines.length; idx++) {
+          if (sequenceCancelledRef.current) break;
+          const line = lines[idx];
           const speakerMatch = line.match(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:/i);
           let isMale = false; 
           let isFemale = false; 
@@ -999,40 +1143,86 @@
             }
           }
 
-          const utter = new SpeechSynthesisUtterance(cleanText);
-          utter.lang = langCode;
+          const targetAiVoiceName = isMale ? activeMaleVoiceName : activeFemaleVoiceName;
 
-          // Google AI Studio 프로필 기반 남-녀 음성 및 음향 튜닝
-          if (isMale) {
-            utter.voice = maleVoice;
-            utter.pitch = maleProfile.pitch; // 묵직하고 신뢰감 있는 남성 톤 (Puck, Charon 등)
-            utter.rate = playbackRate * maleProfile.rate;
-          } else {
-            utter.voice = femaleVoice;
-            utter.pitch = femaleProfile.pitch; // 맑고 또렷한 여성 톤 (Aoede, Kore 등)
-            utter.rate = playbackRate * femaleProfile.rate;
+          // 1순위: Google AI Studio 무료 API 네이티브 원어민 음성 시도
+          let playedViaGoogleAi = false;
+          if (customApiKey) {
+            const audioUrl = await fetchGoogleAiNativeAudio(cleanText, targetAiVoiceName);
+            if (audioUrl && !sequenceCancelledRef.current) {
+              await new Promise((resolve) => {
+                const audio = new Audio(audioUrl);
+                currentAudioRef.current = audio;
+                audio.playbackRate = playbackRate;
+                audio.onended = () => {
+                  currentAudioRef.current = null;
+                  resolve();
+                };
+                audio.onerror = () => {
+                  currentAudioRef.current = null;
+                  resolve();
+                };
+                audio.play().catch(() => resolve());
+              });
+              playedViaGoogleAi = true;
+            }
           }
 
-          utterancesRef.current.push(utter);
-          if (idx === lines.length - 1) {
-            utter.onend = () => { 
-              setPlayingId(null); 
-              setIsPaused(false); 
-              setPlayingStage(null);
-              utterancesRef.current = []; 
-            };
+          if (sequenceCancelledRef.current) break;
+
+          // 2순위: 폴백 브라우저 Web Speech (남-녀 극적 차별화 피치/음색 적용)
+          if (!playedViaGoogleAi) {
+            await new Promise((resolve) => {
+              const utter = new SpeechSynthesisUtterance(cleanText);
+              utter.lang = langCode;
+
+              if (isMale) {
+                utter.voice = maleVoice;
+                // 동일한 voice가 선택되었더라도 남성은 굵고 묵직한 베이스 톤 강제
+                utter.pitch = Math.min(maleProfile.pitch, 0.72);
+                utter.rate = playbackRate * maleProfile.rate;
+              } else {
+                utter.voice = femaleVoice;
+                // 여성은 맑고 명쾌한 소프라노 하이톤 강제
+                utter.pitch = Math.max(femaleProfile.pitch, 1.30);
+                utter.rate = playbackRate * femaleProfile.rate;
+              }
+
+              utter.onend = resolve;
+              utter.onerror = (e) => {
+                if (e.error !== 'canceled' && e.error !== 'interrupted') {
+                  console.warn("TTS Error:", e);
+                }
+                resolve();
+              };
+              utterancesRef.current.push(utter);
+              synthRef.current.speak(utter);
+            });
           }
-          utter.onerror = (e) => {
-             if (e.error === 'canceled' || e.error === 'interrupted') return;
-             console.error("SpeechSynthesis Error:", e);
-             setPlayingId(null); setIsPaused(false); setPlayingStage(null);
-          };
-          synthRef.current.speak(utter);
-        });
+
+          // 대사 간 자연스러운 0.35초 호흡 간격
+          if (idx < lines.length - 1 && !sequenceCancelledRef.current) {
+            await new Promise(r => setTimeout(r, 350));
+          }
+        }
+
+        if (!sequenceCancelledRef.current) {
+          setPlayingId(null); 
+          setIsPaused(false); 
+          setPlayingStage(null);
+          utterancesRef.current = [];
+        }
       };
 
       const stopSpeech = () => {
         sequenceCancelledRef.current = true;
+        if (currentAudioRef.current) {
+          try {
+            currentAudioRef.current.pause();
+            currentAudioRef.current.currentTime = 0;
+          } catch(e) {}
+          currentAudioRef.current = null;
+        }
         if (synthRef.current) synthRef.current.cancel();
         setPlayingId(null); 
         setIsPaused(false); 
@@ -1041,8 +1231,7 @@
       };
 
       // [신규 고도화] 딕테이션 빈칸 타겟 문장 3초 핀포인트 구간반복 (A-B Repeat)
-      const playSaTargetSnippet = (item) => {
-        if (!synthRef.current) return;
+      const playSaTargetSnippet = async (item) => {
         stopSpeech();
         
         const lines = (item.transcript || '').split('\n').filter(l => l.trim().length > 0);
@@ -1059,21 +1248,37 @@
           targetLine = targetLine.replace(/^[\s\*\[\<\(]*(M|W|Man|Woman|남|여|남자|여자)[\s\*\]\>\)]*:[\s\*]*/i, '').trim();
         }
 
+        showToast(`[구간반복] 빈칸 [${item.saBlankWord}] 핵심 문장을 재생합니다.`, "success");
+
+        // 1순위: Google AI Studio 무료 API 실시간 원어민 음성 재생
+        const targetVoice = isMale ? aiMaleVoice : aiFemaleVoice;
+        if (customApiKey) {
+          const audioUrl = await fetchGoogleAiNativeAudio(targetLine, targetVoice);
+          if (audioUrl) {
+            const audio = new Audio(audioUrl);
+            currentAudioRef.current = audio;
+            audio.playbackRate = playbackRate;
+            audio.play().catch(() => {});
+            return;
+          }
+        }
+
+        // 2순위: 폴백 브라우저 Web Speech (남-녀 피치 극적 분리)
+        if (!synthRef.current) return;
         let voices = synthRef.current.getVoices();
         if (voices.length === 0) voices = window.speechSynthesis.getVoices();
         const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
         const voiceObj = findSafeVoice(voices, langCode, !isMale, isMale);
         
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[0];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[0];
+        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[1];
+        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[1];
 
         const utter = new SpeechSynthesisUtterance(targetLine);
         utter.lang = langCode;
         utter.voice = voiceObj;
-        utter.pitch = isMale ? maleProfile.pitch : femaleProfile.pitch;
+        utter.pitch = isMale ? Math.min(maleProfile.pitch, 0.72) : Math.max(femaleProfile.pitch, 1.30);
         utter.rate = playbackRate * (isMale ? maleProfile.rate : femaleProfile.rate);
 
-        showToast(`[구간반복] 빈칸 [${item.saBlankWord}] 핵심 문장을 재생합니다.`, "success");
         synthRef.current.speak(utter);
       };
 
@@ -1143,39 +1348,58 @@
         setRpState(prev => ({ ...prev, activeId: null }));
       };
 
-      const playRPAudio = (text, accent, speakerRole) => {
-        if (!synthRef.current) return;
-        synthRef.current.cancel();
+      const playRPAudio = async (text, accent, speakerRole) => {
+        stopSpeech();
+
+        const isFemale = speakerRole === 'W';
+        const targetAiVoice = isFemale ? aiFemaleVoice : aiMaleVoice;
+
+        // 1순위: Google AI Studio 무료 API 실시간 원어민 음성 재생
+        if (customApiKey) {
+          const audioUrl = await fetchGoogleAiNativeAudio(text, targetAiVoice);
+          if (audioUrl) {
+            const audio = new Audio(audioUrl);
+            currentAudioRef.current = audio;
+            audio.playbackRate = playbackRate;
+            audio.onended = () => {
+              currentAudioRef.current = null;
+              setRpState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+            };
+            audio.onerror = () => {
+              currentAudioRef.current = null;
+              setRpState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+            };
+            audio.play().catch(() => {
+              setRpState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+            });
+            return;
+          }
+        }
+
+        // 2순위: 폴백 브라우저 Web Speech
+        if (!synthRef.current) {
+          setRpState(prev => ({ ...prev, currentIndex: prev.currentIndex + 1 }));
+          return;
+        }
 
         let voices = synthRef.current.getVoices();
         if (voices.length === 0) voices = window.speechSynthesis.getVoices();
 
         const langCode = accent === 'uk' ? 'en-GB' : 'en-US';
-        let enVoices = voices.filter(v => v.lang.startsWith('en'));
-        if (enVoices.length === 0) enVoices = voices;
-        let accentVoices = enVoices.filter(v => v.lang.includes(langCode) || v.lang.replace('_', '-').includes(langCode));
-        if (accentVoices.length === 0) accentVoices = enVoices;
+        const targetVoice = findSafeVoice(voices, langCode, isFemale, !isFemale);
 
-        const isFemale = speakerRole === 'W';
-        const isVoiceFemale = (n) => n.toLowerCase().includes('female') || ['zira', 'samantha', 'victoria', 'karen', 'elsa', 'serena'].some(k => n.toLowerCase().includes(k));
-        const isVoiceMale = (n) => !n.toLowerCase().includes('female') && (n.toLowerCase().includes('male') || ['david', 'alex', 'daniel', 'fred', 'george'].some(k => n.toLowerCase().includes(k)));
-
-        let targetVoice = null;
-        if (isFemale) targetVoice = accentVoices.find(v => isVoiceFemale(v.name)) || enVoices.find(v => isVoiceFemale(v.name)) || accentVoices[0];
-        else targetVoice = accentVoices.find(v => isVoiceMale(v.name)) || enVoices.find(v => isVoiceMale(v.name)) || accentVoices[0];
-
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[0];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[0];
+        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[1];
+        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[1];
 
         const utter = new SpeechSynthesisUtterance(text);
         utter.lang = langCode;
         utter.voice = targetVoice;
 
         if (isFemale) {
-          utter.pitch = femaleProfile.pitch;
+          utter.pitch = Math.max(femaleProfile.pitch, 1.30);
           utter.rate = playbackRate * femaleProfile.rate;
         } else {
-          utter.pitch = maleProfile.pitch;
+          utter.pitch = Math.min(maleProfile.pitch, 0.72);
           utter.rate = playbackRate * maleProfile.rate;
         }
 
@@ -1961,101 +2185,140 @@ ${feedbackList.slice(-3).join('\n')}
             </div>
           </header>
 
-          {/* Google AI Studio 음성 설정 모달 */}
+          {/* Google AI Studio 공식 음성 및 글로벌 잉글리시(Global English) 설정 모달 */}
           {showVoiceModal && (
-            <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-              <div className="bg-white border-4 border-black p-6 shadow-[8px_8px_0_0_#000] max-w-lg w-full space-y-4 animate-fade-in max-h-[90vh] overflow-y-auto">
-                <div className="flex items-center justify-between border-b-4 border-black pb-2">
-                  <h3 className="text-lg font-black flex items-center gap-2">🎙️ Google AI Studio 음성 설정</h3>
-                  <button onClick={() => setShowVoiceModal(false)} className="text-sm font-black border-2 border-black px-2 py-0.5 bg-[#FF3B30] text-white">✕</button>
+            <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+              <div className="skeuo-deck p-6 max-w-lg w-full space-y-4 animate-fade-in max-h-[90vh] overflow-y-auto border border-slate-300">
+                <div className="flex items-center justify-between border-b border-slate-300 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="skeuo-led led-green-on"></span>
+                    <h3 className="text-base font-black text-slate-800 flex items-center gap-1.5">
+                      <span>🎙️ Google AI Studio 글로벌 음성 설정</span>
+                    </h3>
+                  </div>
+                  <button 
+                    onClick={() => setShowVoiceModal(false)} 
+                    className="skeuo-btn px-2.5 py-1 text-xs font-bold text-slate-600 hover:text-red-600"
+                  >
+                    ✕
+                  </button>
                 </div>
 
-                <div className="bg-[#E3FF73] p-3 border-2 border-black text-xs font-bold text-black space-y-1">
-                  <p className="font-black flex items-center gap-1">✨ 2인 대화 남-녀 엄격 분리 안내</p>
-                  <p>수능 듣기 2인 대화는 반드시 <strong>남성(M)</strong>과 <strong>여성(W)</strong>으로 100% 구분되어 재생됩니다. 아래에서 각 성별에 적용할 Google AI Studio 공식 보이스 종류를 선택하세요.</p>
+                <div className="bg-teal-50 p-3 rounded-xl border border-teal-200 text-xs text-teal-950 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 text-teal-900">
+                    <span>✨ Google AI Studio 무료 API 실시간 음성 연동</span>
+                  </p>
+                  <p className="leading-relaxed">
+                    상단 [🔑 AI 엔진 설정]에 Gemini API 키가 입력되어 있으면 Google AI Studio 공식 원어민 오디오가 직접 스트리밍 재생되며, 미등록 시 브라우저 내장 Global English 음성(남/녀 피치 분리)으로 자동 재생됩니다.
+                  </p>
                 </div>
 
                 {/* 남성 보이스 선택 */}
                 <div className="space-y-2">
-                  <label className="text-xs font-black text-black flex items-center gap-1">
-                    <span>👨 남성(M) 역할 음성 (Puck, Charon, Fenrir, Orus):</span>
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>👨 남성(M) 역할 음성:</span>
+                    <span className="text-[11px] font-mono text-teal-700 font-bold">현재: {aiMaleVoice}</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {GOOGLE_AI_VOICES.male.map(v => (
                       <div
                         key={v.id}
                         onClick={() => setAiMaleVoice(v.id)}
-                        className={`p-2.5 border-2 border-black cursor-pointer transition-all ${aiMaleVoice === v.id ? 'bg-[#FFD600] shadow-[2px_2px_0_0_#000] font-black' : 'bg-gray-50 hover:bg-gray-100'}`}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer ${aiMaleVoice === v.id ? 'bg-teal-50 border-teal-500 shadow-sm ring-1 ring-teal-400 font-bold' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
                       >
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold">{v.name}</span>
+                          <span className="text-xs font-bold text-slate-800">{v.name}</span>
                           <button
                             type="button"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
+                              stopSpeech();
+                              const sampleText = "Hello! I am speaking in natural native English for your listening exam.";
+                              if (customApiKey) {
+                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, v.id === 'random' ? 'Puck' : v.id);
+                                if (audioUrl) {
+                                  const audio = new Audio(audioUrl);
+                                  currentAudioRef.current = audio;
+                                  audio.play().catch(() => {});
+                                  return;
+                                }
+                              }
                               let voices = synthRef.current.getVoices();
                               const vObj = findSafeVoice(voices, 'en-US', false, true);
-                              const utter = new SpeechSynthesisUtterance(`Hello, I'm ${v.id} from Google AI Studio. Nice to meet you.`);
+                              const utter = new SpeechSynthesisUtterance(sampleText);
                               utter.lang = 'en-US'; utter.voice = vObj; utter.pitch = v.pitch; utter.rate = v.rate;
-                              synthRef.current.cancel(); synthRef.current.speak(utter);
+                              synthRef.current.speak(utter);
                             }}
-                            className="text-[10px] bg-black text-white px-1.5 py-0.5 border border-black hover:bg-gray-800"
-                            title="미리 듣기"
+                            className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-teal-800"
+                            title="샘플 미리 듣기"
                           >
-                            ▶ 샘플
+                            ▶ 미리듣기
                           </button>
                         </div>
-                        <p className="text-[10px] text-gray-600 mt-1 leading-tight">{v.desc}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-tight">{v.desc}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* 여성 보이스 선택 */}
-                <div className="space-y-2 pt-2 border-t-2 border-dashed border-gray-300">
-                  <label className="text-xs font-black text-black flex items-center gap-1">
-                    <span>👩 여성(W) 역할 음성 (Aoede, Kore, Leda, Mimosa):</span>
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <label className="text-xs font-bold text-slate-800 flex items-center justify-between">
+                    <span>👩 여성(W) 역할 음성:</span>
+                    <span className="text-[11px] font-mono text-pink-700 font-bold">현재: {aiFemaleVoice}</span>
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {GOOGLE_AI_VOICES.female.map(v => (
                       <div
                         key={v.id}
                         onClick={() => setAiFemaleVoice(v.id)}
-                        className={`p-2.5 border-2 border-black cursor-pointer transition-all ${aiFemaleVoice === v.id ? 'bg-[#FF90E8] shadow-[2px_2px_0_0_#000] font-black' : 'bg-gray-50 hover:bg-gray-100'}`}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer ${aiFemaleVoice === v.id ? 'bg-pink-50 border-pink-500 shadow-sm ring-1 ring-pink-400 font-bold' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
                       >
                         <div className="flex justify-between items-center">
-                          <span className="text-xs font-bold">{v.name}</span>
+                          <span className="text-xs font-bold text-slate-800">{v.name}</span>
                           <button
                             type="button"
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
+                              stopSpeech();
+                              const sampleText = "Hi there! I am ready to practice Global English listening with you.";
+                              if (customApiKey) {
+                                const audioUrl = await fetchGoogleAiNativeAudio(sampleText, v.id === 'random' ? 'Aoede' : v.id);
+                                if (audioUrl) {
+                                  const audio = new Audio(audioUrl);
+                                  currentAudioRef.current = audio;
+                                  audio.play().catch(() => {});
+                                  return;
+                                }
+                              }
                               let voices = synthRef.current.getVoices();
                               const vObj = findSafeVoice(voices, 'en-US', true, false);
-                              const utter = new SpeechSynthesisUtterance(`Hi there, I'm ${v.id} from Google AI Studio. Let's practice English listening!`);
+                              const utter = new SpeechSynthesisUtterance(sampleText);
                               utter.lang = 'en-US'; utter.voice = vObj; utter.pitch = v.pitch; utter.rate = v.rate;
-                              synthRef.current.cancel(); synthRef.current.speak(utter);
+                              synthRef.current.speak(utter);
                             }}
-                            className="text-[10px] bg-black text-white px-1.5 py-0.5 border border-black hover:bg-gray-800"
-                            title="미리 듣기"
+                            className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-pink-800"
+                            title="샘플 미리 듣기"
                           >
-                            ▶ 샘플
+                            ▶ 미리듣기
                           </button>
                         </div>
-                        <p className="text-[10px] text-gray-600 mt-1 leading-tight">{v.desc}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 leading-tight">{v.desc}</p>
                       </div>
                     ))}
                   </div>
                 </div>
 
                 {/* 한국어 시험 발문 안내방송 음성 선택 및 미리듣기 */}
-                <div className="space-y-2 pt-2 border-t-2 border-dashed border-gray-300">
+                <div className="space-y-2 pt-2 border-t border-slate-200">
                   <div className="flex justify-between items-center">
-                    <label className="text-xs font-black text-black flex items-center gap-1">
+                    <label className="text-xs font-bold text-slate-800 flex items-center gap-1">
                       <span>📢 한국어 시험 발문 안내방송 음성:</span>
                     </label>
                     <button
                       type="button"
                       onClick={() => {
+                        stopSpeech();
                         let voices = synthRef.current.getVoices();
                         const korVoice = findKoreanVoice(voices, aiKoreanVoice);
                         const sampleText = "1번, 다음을 듣고, 남자가 하는 말의 목적으로 가장 적절한 것을 고르시오.";
@@ -2064,47 +2327,44 @@ ${feedbackList.slice(-3).join('\n')}
                         utter.rate = 0.92;
                         utter.pitch = 1.02;
                         if (korVoice) utter.voice = korVoice;
-                        synthRef.current.cancel();
                         synthRef.current.speak(utter);
                       }}
-                      className="text-xs bg-[#00C4B3] text-black font-black px-2.5 py-1 border border-black shadow-[2px_2px_0_0_#000] hover:bg-teal-300"
+                      className="skeuo-btn text-[11px] px-2.5 py-1 font-bold text-slate-700"
                     >
-                      ▶ 안내방송 샘플 미리듣기
+                      ▶ 안내방송 미리듣기
                     </button>
                   </div>
 
-                  <div className="p-3 bg-gray-50 border-2 border-black space-y-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={aiKoreanVoice}
-                        onChange={(e) => setAiKoreanVoice(e.target.value)}
-                        className="w-full border-2 border-black p-2 text-xs font-bold bg-white outline-none"
-                      >
-                        <option value="auto">🌟 [추천] 초고음질 자연스러운 신경망 보이스 자동 탐색 (Google / Natural / SunHi 우선)</option>
-                        {synthRef.current?.getVoices().filter(v => (v.lang || '').toLowerCase().startsWith('ko') || (v.name || '').includes('Korean') || (v.name || '').includes('한국')).map((v, idx) => (
-                          <option key={idx} value={v.name}>{v.name} ({v.lang})</option>
-                        ))}
-                      </select>
-                    </div>
-                    <p className="text-[11px] text-gray-600 font-bold leading-relaxed">
-                      ※ Windows 기본 음성(Heami) 대신 <strong>Google 한국의</strong> 또는 <strong>Microsoft SunHi / InJoon Online (Natural)</strong> 신경망 보이스와 아나운서 호흡(rate 0.92, pitch 1.02)을 적용하여 기계음 없이 사람처럼 읽어줍니다.
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                    <select
+                      value={aiKoreanVoice}
+                      onChange={(e) => setAiKoreanVoice(e.target.value)}
+                      className="w-full border border-slate-300 rounded-lg p-2 text-xs font-bold bg-white text-slate-800 outline-none shadow-inner"
+                    >
+                      <option value="auto">🌟 [추천] 초고음질 자연스러운 신경망 보이스 자동 탐색 (Google / Natural / SunHi 우선)</option>
+                      {synthRef.current?.getVoices().filter(v => (v.lang || '').toLowerCase().startsWith('ko') || (v.name || '').includes('Korean') || (v.name || '').includes('한국')).map((v, idx) => (
+                        <option key={idx} value={v.name}>{v.name} ({v.lang})</option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+                      ※ Windows 기본 음성(Heami) 대신 <strong>Google 한국의</strong> 또는 <strong>Microsoft SunHi / InJoon Online (Natural)</strong> 신경망 보이스와 아나운서 호흡을 적용하여 기계음 없이 사람처럼 읽어줍니다.
                     </p>
                   </div>
                 </div>
 
-                <div className="flex gap-2 justify-end pt-3 border-t-2 border-black">
+                <div className="flex gap-2 justify-end pt-2 border-t border-slate-300">
                   <button
                     type="button"
                     onClick={() => {
                       localStorage.setItem('ai_male_voice', aiMaleVoice);
                       localStorage.setItem('ai_female_voice', aiFemaleVoice);
                       localStorage.setItem('ai_korean_voice', aiKoreanVoice);
-                      showToast(`음성 설정(남: ${aiMaleVoice}, 여: ${aiFemaleVoice}, 한국어: ${aiKoreanVoice === 'auto' ? '신경망 자동' : aiKoreanVoice})이 저장되었습니다!`, "success");
+                      showToast(`음성 설정(남: ${aiMaleVoice}, 여: ${aiFemaleVoice})이 저장되었습니다!`, "success");
                       setShowVoiceModal(false);
                     }}
-                    className="text-xs font-black px-5 py-2.5 border-2 border-black bg-[#FFD600] shadow-[3px_3px_0_0_#000] active:translate-x-0.5 active:translate-y-0.5"
+                    className="skeuo-btn skeuo-btn-teal px-5 py-2 text-xs font-bold text-white"
                   >
-                    설정 저장 및 적용
+                    설정 저장 및 적용 ➔
                   </button>
                 </div>
               </div>
