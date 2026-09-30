@@ -866,21 +866,41 @@
       const [apiKeyInput, setApiKeyInput] = useState(() => localStorage.getItem('gemini_api_key') || decodeSecureKey(DEFAULT_SECURE_GEMINI));
       const [showKeyModal, setShowKeyModal] = useState(false);
 
-      // Google AI Studio 공식 음성 라인업 및 글로벌 잉글리시(Global English) 보이스 선택 상태
+      // Google AI Studio 공식 음성 라인업 및 글로벌 잉글리시(미국/영국/호주/캐나다/인도) 보이스 프로필
+      const VOICE_REGIONAL_PROFILES = {
+        Puck: { geminiVoice: 'Puck', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['guy', 'david', 'alex', 'mark', 'google us english', 'brian'], pitch: 0.88, rate: 0.98, sample: "Hello! I am Puck, speaking in a natural and vibrant American accent." },
+        Charon: { geminiVoice: 'Charon', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.72, rate: 0.94, sample: "Greetings. I am Charon, offering a deep and reliable American voice." },
+        Fenrir: { geminiVoice: 'Fenrir', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb', 'united kingdom'], pitch: 0.86, rate: 1.0, sample: "Good day. I am Fenrir, speaking with a distinct and polished British accent." },
+        Orus: { geminiVoice: 'Orus', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['william', 'james', 'australia', 'au', 'brian', 'david', 'lee'], pitch: 0.78, rate: 0.96, sample: "G'day! I am Orus, providing an authentic Australian accent for your exam." },
+        Zephyr: { geminiVoice: 'Puck', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['liam', 'richard', 'canada', 'ca', 'canadian'], pitch: 0.82, rate: 0.98, sample: "Hello there. I am Zephyr, bringing a clear and natural Canadian voice." },
+        Ravi: { geminiVoice: 'Charon', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['prabhat', 'ravi', 'india', 'in', 'indian'], pitch: 0.80, rate: 0.96, sample: "Namaste and hello. I am Ravi, speaking in articulate and international Indian English." },
+
+        Aoede: { geminiVoice: 'Aoede', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.18, rate: 1.0, sample: "Hi there! I am Aoede, a clear and friendly American speaker." },
+        Kore: { geminiVoice: 'Kore', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.05, rate: 0.96, sample: "Hello, I am Kore, speaking in a calm, warm, and gentle American tone." },
+        Leda: { geminiVoice: 'Leda', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb', 'united kingdom'], pitch: 1.22, rate: 1.02, sample: "Good day, I am Leda, speaking with an elegant and intellectual British accent." },
+        Mimosa: { geminiVoice: 'Aoede', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.12, rate: 0.97, sample: "G'day! I am Mimosa, bringing a cheerful and authentic Australian style." },
+        Clara: { geminiVoice: 'Aoede', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['clara', 'linda', 'canada', 'ca', 'canadian'], pitch: 1.16, rate: 1.0, sample: "Hi! I am Clara, speaking in a crisp and approachable Canadian accent." },
+        Neerja: { geminiVoice: 'Kore', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian'], pitch: 1.10, rate: 0.97, sample: "Hello! I am Neerja, speaking in fluent, expressive, and clear Indian English." }
+      };
+
       const GOOGLE_AI_VOICES = {
         male: [
-          { id: 'random', name: '🎲 [랜덤] 매번 다양한 글로벌 남성 목소리', desc: 'Puck, Charon, Fenrir, Orus 중 문항 및 대화마다 랜덤 배정', pitch: 0.80, rate: 0.98 },
-          { id: 'Puck', name: '🇺🇸 Puck (퍽)', desc: '자연스럽고 생생한 미국식 청년/남학생 톤 (활기참)', pitch: 0.82, rate: 0.98 },
-          { id: 'Charon', name: '🇺🇸 Charon (카론)', desc: '중후하고 신뢰감 있는 깊은 남성 톤 (교사/전문가/안내)', pitch: 0.72, rate: 0.95 },
-          { id: 'Fenrir', name: '🇬🇧 Fenrir (펜리르)', desc: '영국/글로벌 스타일의 에너지 넘치고 또렷한 남성 톤', pitch: 0.86, rate: 1.02 },
-          { id: 'Orus', name: '🇦🇺 Orus (오루스)', desc: '호주/글로벌 스타일의 지적이고 차분한 학술/뉴스 앵커 톤', pitch: 0.78, rate: 0.96 }
+          { id: 'random', name: '🎲 [랜덤] 5개국(미국/영국/호주/캐나다/인도) 글로벌 남성', desc: '문항 및 대화마다 5개국 남성 원어민 화자가 다채롭게 자동 배정됩니다.', pitch: 0.80, rate: 0.98 },
+          { id: 'Puck', name: '🇺🇸 [미국] Puck (퍽)', desc: '활기차고 생생한 미국 표준(General American) 청년 남성', pitch: 0.88, rate: 0.98 },
+          { id: 'Charon', name: '🇺🇸 [미국] Charon (카론)', desc: '중후하고 신뢰감 넘치는 깊은 미국 성인 남성', pitch: 0.72, rate: 0.94 },
+          { id: 'Fenrir', name: '🇬🇧 [영국] Fenrir (펜리르)', desc: '명확하고 세련된 영국식(British RP) 남성', pitch: 0.86, rate: 1.0 },
+          { id: 'Orus', name: '🇦🇺 [호주] Orus (오루스)', desc: '차분하고 따뜻한 호주식(Australian) 남성 톤', pitch: 0.78, rate: 0.96 },
+          { id: 'Zephyr', name: '🇨🇦 [캐나다] Zephyr (제피르)', desc: '부드럽고 자연스러운 캐나다식(Canadian) 남성 톤', pitch: 0.82, rate: 0.98 },
+          { id: 'Ravi', name: '🇮🇳 [인도] Ravi (라비)', desc: '정확하고 명료한 인도 글로벌 비즈니스 영어 남성 톤', pitch: 0.80, rate: 0.96 }
         ],
         female: [
-          { id: 'random', name: '🎲 [랜덤] 매번 다양한 글로벌 여성 목소리', desc: 'Aoede, Kore, Leda, Mimosa 중 문항 및 대화마다 랜덤 배정', pitch: 1.15, rate: 1.0 },
-          { id: 'Aoede', name: '🇺🇸 Aoede (아오이데)', desc: '맑고 친절하며 또렷한 미국식 여성 톤 (여학생/직원)', pitch: 1.18, rate: 1.0 },
-          { id: 'Kore', name: '🇺🇸 Kore (코레)', desc: '부드럽고 안정감 있는 성인 여성 톤 (어머니/상담사)', pitch: 1.08, rate: 0.97 },
-          { id: 'Leda', name: '🇬🇧 Leda (레다)', desc: '영국식 명확하고 전달력 높은 지적인 아나운서 스타일', pitch: 1.25, rate: 1.02 },
-          { id: 'Mimosa', name: '🇦🇺 Mimosa (미모사)', desc: '호주/글로벌 스타일의 상냥하고 따뜻한 일상 회화 여성 톤', pitch: 1.12, rate: 0.98 }
+          { id: 'random', name: '🎲 [랜덤] 5개국(미국/영국/호주/캐나다/인도) 글로벌 여성', desc: '문항 및 대화마다 5개국 여성 원어민 화자가 다채롭게 자동 배정됩니다.', pitch: 1.15, rate: 1.0 },
+          { id: 'Aoede', name: '🇺🇸 [미국] Aoede (아오이데)', desc: '맑고 친절하며 또렷한 미국 표준(General American) 여성', pitch: 1.18, rate: 1.0 },
+          { id: 'Kore', name: '🇺🇸 [미국] Kore (코레)', desc: '차분하고 포근한 미국 성인 여성', pitch: 1.05, rate: 0.96 },
+          { id: 'Leda', name: '🇬🇧 [영국] Leda (레다)', desc: '우아하고 지적인 영국식(British RP) 아나운서 여성', pitch: 1.22, rate: 1.02 },
+          { id: 'Mimosa', name: '🇦🇺 [호주] Mimosa (미모사)', desc: '경쾌하고 다정한 호주식(Australian) 일상 회화 여성', pitch: 1.12, rate: 0.97 },
+          { id: 'Clara', name: '🇨🇦 [캐나다] Clara (클라라)', desc: '밝고 산뜻하며 전달력 높은 캐나다식(Canadian) 여성', pitch: 1.16, rate: 1.0 },
+          { id: 'Neerja', name: '🇮🇳 [인도] Neerja (니르자)', desc: '유창하고 이지적인 인도 글로벌 영어 여성', pitch: 1.10, rate: 0.97 }
         ]
       };
 
@@ -1033,7 +1053,7 @@
         return turns;
       };
 
-      // Google AI Studio 공식 고음질 네이티브 음성 합성 (Lookahead Prefetching & Blob URL 캐싱)
+      // Google AI Studio 공식 고음질 네이티브 음성 합성 (5개국 글로벌 원어민 악센트 & Lookahead Prefetching & Blob URL 캐싱)
       const fetchGoogleAiNativeAudio = async (text, requestedVoiceId) => {
         const apiKey = (customApiKey || "").trim();
         if (!apiKey) return null; // Gemini API 키가 없을 경우 브라우저 Web Speech로 자동 폴백
@@ -1041,32 +1061,42 @@
         const cleanText = cleanDialogueSpeech(text);
         if (!cleanText || !/[a-zA-Z]/.test(cleanText)) return null;
 
-        // 'random'일 경우 실제 voiceName 매핑
-        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus'];
-        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa'];
-        let actualVoice = requestedVoiceId;
-        if (actualVoice === 'random') {
+        // 'random'일 경우 5개국 글로벌 풀에서 랜덤 배정
+        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus', 'Zephyr', 'Ravi'];
+        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa', 'Clara', 'Neerja'];
+        let actualVoiceId = requestedVoiceId;
+        if (actualVoiceId === 'random') {
           const combined = [...malePool, ...femalePool];
-          actualVoice = combined[Math.floor(Math.random() * combined.length)];
+          actualVoiceId = combined[Math.floor(Math.random() * combined.length)];
         }
 
-        const cacheKey = `${actualVoice}:${cleanText}`;
+        const profile = VOICE_REGIONAL_PROFILES[actualVoiceId] || VOICE_REGIONAL_PROFILES.Puck;
+        const geminiPrebuiltVoice = profile.geminiVoice || 'Puck';
+        const regionalAccent = profile.accentName || 'American (General American)';
+        const countryName = profile.country || '미국';
+
+        const cacheKey = `${actualVoiceId}:${cleanText}`;
         if (audioCacheRef.current[cacheKey]) {
           return audioCacheRef.current[cacheKey];
         }
 
         try {
-          // Google AI Studio 공식 고음질 네이티브 오디오 생성 엔드포인트 (순수 대사 텍스트만 전달)
+          // Google AI Studio 공식 고음질 네이티브 오디오 생성 (현지 억양 시스템 지시문 주입)
           const payload = {
             contents: [{
               parts: [{ text: cleanText }]
             }],
+            systemInstruction: {
+              parts: [{
+                text: `You are an authentic native English speaker from ${countryName} speaking in a natural ${regionalAccent} accent. Speak the given dialogue line naturally with clear pronunciation, authentic regional intonation, and realistic conversational rhythm. Do not read any stage directions or prefixes.`
+              }]
+            },
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: {
                 voiceConfig: {
                   prebuiltVoiceConfig: {
-                    voiceName: actualVoice
+                    voiceName: geminiPrebuiltVoice
                   }
                 }
               }
@@ -1398,17 +1428,21 @@
 
         // 화자 ID별 최적의 시스템 보이스 검색 우선순위 및 오디오 프로필 매핑 (남성은 실제 남성 성우 우선 매칭)
         const maleProfiles = {
-          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'mark', 'google uk english male', 'brian'], pitch: 0.95, rate: 1.02 },
-          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.68, rate: 0.92 },
-          Fenrir: { keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb'], pitch: 0.86, rate: 1.0 },
-          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian', 'david'], pitch: 0.76, rate: 0.95 }
+          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'mark', 'google us english', 'brian'], pitch: 0.95, rate: 1.02, accent: 'us' },
+          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.68, rate: 0.92, accent: 'us' },
+          Fenrir: { keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb', 'united kingdom'], pitch: 0.86, rate: 1.0, accent: 'uk' },
+          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian', 'david', 'lee'], pitch: 0.76, rate: 0.95, accent: 'au' },
+          Zephyr: { keywords: ['liam', 'richard', 'canada', 'ca', 'canadian'], pitch: 0.82, rate: 0.98, accent: 'ca' },
+          Ravi: { keywords: ['prabhat', 'ravi', 'india', 'in', 'indian'], pitch: 0.80, rate: 0.96, accent: 'in' }
         };
 
         const femaleProfiles = {
-          Aoede: { keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.25, rate: 1.02 },
-          Kore: { keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.02, rate: 0.94 },
-          Leda: { keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb'], pitch: 1.20, rate: 0.98 },
-          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.10, rate: 0.96 }
+          Aoede: { keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.25, rate: 1.02, accent: 'us' },
+          Kore: { keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.02, rate: 0.94, accent: 'us' },
+          Leda: { keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb', 'united kingdom'], pitch: 1.20, rate: 0.98, accent: 'uk' },
+          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.10, rate: 0.96, accent: 'au' },
+          Clara: { keywords: ['clara', 'linda', 'canada', 'ca', 'canadian'], pitch: 1.16, rate: 1.0, accent: 'ca' },
+          Neerja: { keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian'], pitch: 1.10, rate: 0.97, accent: 'in' }
         };
 
         const mProf = maleProfiles[targetMaleId] || maleProfiles.Puck;
@@ -1599,17 +1633,30 @@
         setPlayingStage('body');
         const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
 
-        // 매 문항/대화마다 다채로운 글로벌 보이스 확정 (랜덤 모드 지원)
-        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus'];
-        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa'];
-        const activeMaleVoiceName = aiMaleVoice === 'random' ? malePool[Math.floor(Math.random() * malePool.length)] : aiMaleVoice;
-        const activeFemaleVoiceName = aiFemaleVoice === 'random' ? femalePool[Math.floor(Math.random() * femalePool.length)] : aiFemaleVoice;
+        // 매 문항/대화마다 5개국(미국/영국/호주/캐나다/인도) 다채로운 글로벌 보이스 배정 (두 화자 음성 100% 분리)
+        const malePool = ['Puck', 'Charon', 'Fenrir', 'Orus', 'Zephyr', 'Ravi'];
+        const femalePool = ['Aoede', 'Kore', 'Leda', 'Mimosa', 'Clara', 'Neerja'];
+
+        // 문항 번호(questionNumber)를 활용하여 매 문항마다 다른 국가의 화자가 자연스럽게 순환 배정
+        let activeMaleVoiceName = aiMaleVoice;
+        if (activeMaleVoiceName === 'random') {
+          activeMaleVoiceName = malePool[(questionNumber - 1) % malePool.length];
+        }
+
+        let activeFemaleVoiceName = aiFemaleVoice;
+        if (activeFemaleVoiceName === 'random') {
+          const maleCountry = (VOICE_REGIONAL_PROFILES[activeMaleVoiceName] || {}).country;
+          // 두 화자가 대화할 때 반드시 국가와 억양, 음색이 서로 다르게 배정!
+          const nonCollisionFemales = femalePool.filter(f => (VOICE_REGIONAL_PROFILES[f] || {}).country !== maleCountry);
+          const poolToUse = nonCollisionFemales.length > 0 ? nonCollisionFemales : femalePool;
+          activeFemaleVoiceName = poolToUse[(questionNumber) % poolToUse.length];
+        }
 
         // 100% 남/녀 음성 분리 보장 (Zero-Collision 매핑 & 화자별 맞춤 피치/속도 프로필)
         const { maleVoice, femaleVoice, maleSettings, femaleSettings, isSameVoice } = resolveDisjointVoices(voices, activeMaleVoiceName, activeFemaleVoiceName, item.accent);
 
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === activeMaleVoiceName) || GOOGLE_AI_VOICES.male[1];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === activeFemaleVoiceName) || GOOGLE_AI_VOICES.female[1];
+        const maleProfile = VOICE_REGIONAL_PROFILES[activeMaleVoiceName] || VOICE_REGIONAL_PROFILES.Puck;
+        const femaleProfile = VOICE_REGIONAL_PROFILES[activeFemaleVoiceName] || VOICE_REGIONAL_PROFILES.Aoede;
 
         // 1. 대본 정제 및 발화자/대사 리스트 구조화 (상황묘사/지문/효과음 지시문 완전 제거 & 남녀 1:1 교차 대화 보장)
         const isMonologue = item.type === 'monologue';
@@ -1652,9 +1699,10 @@
           if (customApiKey) {
             const audioUrl = await fetchGoogleAiNativeAudio(turn.speechText, turn.targetAiVoiceName);
             if (audioUrl && !sequenceCancelledRef.current) {
+              const profile = VOICE_REGIONAL_PROFILES[turn.targetAiVoiceName] || {};
               setActiveSpeakerIndicator({ 
                 role: turn.isMale ? 'M' : 'W', 
-                name: `${turn.targetAiVoiceName} (${turn.isMale ? '남성' : '여성'})`, 
+                name: `${profile.flag || ''} ${turn.targetAiVoiceName} (${turn.isMale ? '남성' : '여성'})`, 
                 isGoogleAi: true 
               });
               await new Promise((resolve) => {
@@ -1682,7 +1730,8 @@
             const currentVoice = turn.isMale ? maleVoice : femaleVoice;
             const currentSetting = turn.isMale ? maleSettings : femaleSettings;
             const chosenVoiceId = turn.isMale ? activeMaleVoiceName : activeFemaleVoiceName;
-            const voiceDisplayName = currentVoice ? `${chosenVoiceId} (${currentVoice.name})` : (turn.isMale ? `${chosenVoiceId} (남성)` : `${chosenVoiceId} (여성)`);
+            const profile = VOICE_REGIONAL_PROFILES[chosenVoiceId] || {};
+            const voiceDisplayName = currentVoice ? `${profile.flag || ''} ${chosenVoiceId} (${currentVoice.name})` : `${profile.flag || ''} ${chosenVoiceId} (${turn.isMale ? '남성' : '여성'})`;
 
             setActiveSpeakerIndicator({ 
               role: turn.isMale ? 'M' : 'W', 
@@ -1809,8 +1858,8 @@
         const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
         const { maleVoice, femaleVoice, isSameVoice } = resolveDisjointVoices(voices, aiMaleVoice, aiFemaleVoice, item.accent);
         
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[1];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[1];
+        const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
+        const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
 
         const utter = new SpeechSynthesisUtterance(targetLine);
         utter.lang = langCode;
@@ -1930,8 +1979,8 @@
         const { maleVoice, femaleVoice, isSameVoice } = resolveDisjointVoices(voices, aiMaleVoice, aiFemaleVoice, accent);
         const targetVoice = isFemale ? femaleVoice : maleVoice;
 
-        const maleProfile = GOOGLE_AI_VOICES.male.find(v => v.id === aiMaleVoice) || GOOGLE_AI_VOICES.male[1];
-        const femaleProfile = GOOGLE_AI_VOICES.female.find(v => v.id === aiFemaleVoice) || GOOGLE_AI_VOICES.female[1];
+        const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
+        const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
 
         const utter = new SpeechSynthesisUtterance(text);
         utter.lang = langCode;
@@ -2897,15 +2946,9 @@ ${feedbackList.slice(-3).join('\n')}
                               e.stopPropagation();
                               stopSpeech();
                               const chosenId = v.id === 'random' ? 'Puck' : v.id;
-                              const sampleMap = {
-                                Puck: "Hello! I am Puck, sounding energetic and clear.",
-                                Charon: "Greetings, I am Charon, providing a deep and reliable voice.",
-                                Fenrir: "Good day, I am Fenrir, speaking in a distinct British accent.",
-                                Orus: "G'day, I am Orus, offering a calm and intellectual Australian voice."
-                              };
-                              const sampleText = sampleMap[chosenId] || "Hello! I am speaking in natural native English for your listening exam.";
+                              const sampleText = (VOICE_REGIONAL_PROFILES[chosenId] || {}).sample || "Hello! I am speaking in natural native English for your listening exam.";
                               if (customApiKey) {
-                                showToast(`Google AI Studio '${chosenId}' 고음질 음성 생성 중...`, "info");
+                                showToast(`Google AI Studio '${chosenId}' (${(VOICE_REGIONAL_PROFILES[chosenId] || {}).country}) 고음질 음성 생성 중...`, "info");
                                 const audioUrl = await fetchGoogleAiNativeAudio(sampleText, chosenId);
                                 if (audioUrl) {
                                   const audio = new Audio(audioUrl);
@@ -2962,15 +3005,9 @@ ${feedbackList.slice(-3).join('\n')}
                               e.stopPropagation();
                               stopSpeech();
                               const chosenId = v.id === 'random' ? 'Aoede' : v.id;
-                              const sampleMap = {
-                                Aoede: "Hi there! I am Aoede, a clear and pleasant American speaker.",
-                                Kore: "Hello, I am Kore, speaking in a calm, warm, and gentle tone.",
-                                Leda: "Good day, I am Leda, speaking with a polished and intellectual British accent.",
-                                Mimosa: "G'day, I am Mimosa, bringing a warm and cheerful Australian style."
-                              };
-                              const sampleText = sampleMap[chosenId] || "Hi there! I am ready to practice Global English listening with you.";
+                              const sampleText = (VOICE_REGIONAL_PROFILES[chosenId] || {}).sample || "Hi there! I am ready to practice Global English listening with you.";
                               if (customApiKey) {
-                                showToast(`Google AI Studio '${chosenId}' 고음질 음성 생성 중...`, "info");
+                                showToast(`Google AI Studio '${chosenId}' (${(VOICE_REGIONAL_PROFILES[chosenId] || {}).country}) 고음질 음성 생성 중...`, "info");
                                 const audioUrl = await fetchGoogleAiNativeAudio(sampleText, chosenId);
                                 if (audioUrl) {
                                   const audio = new Audio(audioUrl);
@@ -3846,9 +3883,6 @@ ${feedbackList.slice(-3).join('\n')}
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="w-8 h-8 skeuo-btn rounded-xl flex items-center justify-center font-black text-sm text-slate-800 font-mono">
                             {idx + 1}
-                          </span>
-                          <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-mono">
-                            {item.accent.toUpperCase()} Accent
                           </span>
                           {item.standardType && (
                             <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-teal-100 text-teal-800">
