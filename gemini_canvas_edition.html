@@ -868,19 +868,19 @@
 
       // Google AI Studio 공식 음성 라인업 및 글로벌 잉글리시(미국/영국/호주/캐나다/인도) 보이스 프로필
       const VOICE_REGIONAL_PROFILES = {
-        Puck: { geminiVoice: 'Puck', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['guy', 'david', 'alex', 'mark', 'google us english', 'brian'], pitch: 0.88, rate: 0.98, sample: "Hello! I am Puck, speaking in a natural and vibrant American accent." },
-        Charon: { geminiVoice: 'Charon', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.72, rate: 0.94, sample: "Greetings. I am Charon, offering a deep and reliable American voice." },
-        Fenrir: { geminiVoice: 'Fenrir', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb', 'united kingdom'], pitch: 0.86, rate: 1.0, sample: "Good day. I am Fenrir, speaking with a distinct and polished British accent." },
-        Orus: { geminiVoice: 'Orus', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['william', 'james', 'australia', 'au', 'brian', 'david', 'lee'], pitch: 0.78, rate: 0.96, sample: "G'day! I am Orus, providing an authentic Australian accent for your exam." },
-        Zephyr: { geminiVoice: 'Puck', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['liam', 'richard', 'canada', 'ca', 'canadian'], pitch: 0.82, rate: 0.98, sample: "Hello there. I am Zephyr, bringing a clear and natural Canadian voice." },
-        Ravi: { geminiVoice: 'Charon', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['prabhat', 'ravi', 'india', 'in', 'indian'], pitch: 0.80, rate: 0.96, sample: "Namaste and hello. I am Ravi, speaking in articulate and international Indian English." },
+        Puck: { geminiVoice: 'Puck', langCode: 'en-US', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['guy', 'david', 'alex', 'mark', 'google us english', 'brian'], pitch: 0.88, rate: 0.98, sample: "Hello! I am Puck, speaking in a natural and vibrant American accent." },
+        Charon: { geminiVoice: 'Charon', langCode: 'en-US', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.72, rate: 0.94, sample: "Greetings. I am Charon, offering a deep and reliable American voice." },
+        Fenrir: { geminiVoice: 'Fenrir', langCode: 'en-GB', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb', 'united kingdom'], pitch: 0.86, rate: 1.0, sample: "Good day. I am Fenrir, speaking with a distinct and polished British accent." },
+        Orus: { geminiVoice: 'Orus', langCode: 'en-AU', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['william', 'james', 'australia', 'au', 'brian', 'david', 'lee'], pitch: 0.78, rate: 0.96, sample: "G'day! I am Orus, providing an authentic Australian accent for your exam." },
+        Zephyr: { geminiVoice: 'Puck', langCode: 'en-CA', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['liam', 'richard', 'canada', 'ca', 'canadian'], pitch: 0.82, rate: 0.98, sample: "Hello there. I am Zephyr, bringing a clear and natural Canadian voice." },
+        Ravi: { geminiVoice: 'Charon', langCode: 'en-IN', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['prabhat', 'ravi', 'india', 'in', 'indian'], pitch: 0.80, rate: 0.96, sample: "Namaste and hello. I am Ravi, speaking in articulate and international Indian English." },
 
-        Aoede: { geminiVoice: 'Aoede', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.18, rate: 1.0, sample: "Hi there! I am Aoede, a clear and friendly American speaker." },
-        Kore: { geminiVoice: 'Kore', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.05, rate: 0.96, sample: "Hello, I am Kore, speaking in a calm, warm, and gentle American tone." },
-        Leda: { geminiVoice: 'Leda', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb', 'united kingdom'], pitch: 1.22, rate: 1.02, sample: "Good day, I am Leda, speaking with an elegant and intellectual British accent." },
-        Mimosa: { geminiVoice: 'Aoede', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.12, rate: 0.97, sample: "G'day! I am Mimosa, bringing a cheerful and authentic Australian style." },
-        Clara: { geminiVoice: 'Aoede', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['clara', 'linda', 'canada', 'ca', 'canadian'], pitch: 1.16, rate: 1.0, sample: "Hi! I am Clara, speaking in a crisp and approachable Canadian accent." },
-        Neerja: { geminiVoice: 'Kore', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian'], pitch: 1.10, rate: 0.97, sample: "Hello! I am Neerja, speaking in fluent, expressive, and clear Indian English." }
+        Aoede: { geminiVoice: 'Aoede', langCode: 'en-US', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.18, rate: 1.0, sample: "Hi there! I am Aoede, a clear and friendly American speaker." },
+        Kore: { geminiVoice: 'Kore', langCode: 'en-US', country: '미국', flag: '🇺🇸', accentName: 'American (General American)', keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.05, rate: 0.96, sample: "Hello, I am Kore, speaking in a calm, warm, and gentle American tone." },
+        Leda: { geminiVoice: 'Leda', langCode: 'en-GB', country: '영국', flag: '🇬🇧', accentName: 'British (Received Pronunciation)', keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb', 'united kingdom'], pitch: 1.22, rate: 1.02, sample: "Good day, I am Leda, speaking with an elegant and intellectual British accent." },
+        Mimosa: { geminiVoice: 'Aoede', langCode: 'en-AU', country: '호주', flag: '🇦🇺', accentName: 'Australian English', keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.12, rate: 0.97, sample: "G'day! I am Mimosa, bringing a cheerful and authentic Australian style." },
+        Clara: { geminiVoice: 'Aoede', langCode: 'en-CA', country: '캐나다', flag: '🇨🇦', accentName: 'Canadian English', keywords: ['clara', 'linda', 'canada', 'ca', 'canadian'], pitch: 1.16, rate: 1.0, sample: "Hi! I am Clara, speaking in a crisp and approachable Canadian accent." },
+        Neerja: { geminiVoice: 'Kore', langCode: 'en-IN', country: '인도', flag: '🇮🇳', accentName: 'Indian English', keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian'], pitch: 1.10, rate: 0.97, sample: "Hello! I am Neerja, speaking in fluent, expressive, and clear Indian English." }
       };
 
       const GOOGLE_AI_VOICES = {
@@ -1081,16 +1081,11 @@
         }
 
         try {
-          // Google AI Studio 공식 고음질 네이티브 오디오 생성 (현지 억양 시스템 지시문 주입)
+          // Google AI Studio 공식 고음질 네이티브 오디오 생성 (voiceName 기반 원어민 음성 합성)
           const payload = {
             contents: [{
               parts: [{ text: cleanText }]
             }],
-            systemInstruction: {
-              parts: [{
-                text: `You are an authentic native English speaker from ${countryName} speaking in a natural ${regionalAccent} accent. Speak the given dialogue line naturally with clear pronunciation, authentic regional intonation, and realistic conversational rhythm. Do not read any stage directions or prefixes.`
-              }]
-            },
             generationConfig: {
               responseModalities: ["AUDIO"],
               speechConfig: {
@@ -1375,7 +1370,7 @@
         return { success: false, text: null, engine: null };
       };
 
-      // 100% 남/녀 음성 분리 및 글로벌 잉글리시 매핑 보장 엔진 (Zero-Collision Voice Resolver)
+      // 100% 남/녀 음성 분리 및 5개국(미국/영국/호주/캐나다/인도) 글로벌 잉글리시 정밀 매핑 엔진
       const isVoiceFemale = (name) => { 
         const n = (name || '').toLowerCase(); 
         if (n.includes('google us english') || n.includes('google uk english female')) return true; 
@@ -1384,22 +1379,22 @@
           'zira', 'samantha', 'victoria', 'karen', 'susan', 'catherine', 'elsa', 'hazel', 
           'veena', 'tessa', 'serena', 'yuna', 'heami', 'ava', 'jenny', 'aria', 'michelle', 
           'stephanie', 'sonia', 'libby', 'natasha', 'clara', 'amy', 'emily', 'emma', 'olivia', 
-          'chloe', 'sara', 'sarah', 'mary', 'kate', 'sunhi', 'sehyun'
+          'chloe', 'sara', 'sarah', 'mary', 'kate', 'sunhi', 'sehyun', 'neerja', 'heera'
         ];
         return femaleKeywords.some(k => n.includes(k)); 
       };
 
       const isVoiceMale = (name) => { 
         const n = (name || '').toLowerCase(); 
-        // Chrome의 Google US English는 실제 여성이 발음하므로 남성 보이스 풀에서 철저히 제외
+        if (n.includes('google uk english male')) return true;
         if (n.includes('google us english') || n.includes('google uk english female')) return false; 
         if (n.includes('female') || n.includes('woman') || n.includes('girl')) return false; 
-        if (n.includes('google uk english male')) return true;
         if (n.includes('male') || n.includes('man') || n.includes('boy')) return true; 
         const maleKeywords = [
           'david', 'alex', 'daniel', 'fred', 'mark', 'james', 'guy', 'arthur', 'aaron', 
           'brian', 'george', 'minsu', 'andrew', 'christopher', 'eric', 'richard', 'ryan', 
-          'william', 'oliver', 'thomas', 'charles', 'henry', 'jack', 'john', 'paul', 'steve', 'injoon', 'insoo'
+          'william', 'oliver', 'thomas', 'charles', 'henry', 'jack', 'john', 'paul', 'steve', 'injoon', 'insoo',
+          'prabhat', 'ravi'
         ];
         return maleKeywords.some(k => n.includes(k)); 
       };
@@ -1411,11 +1406,17 @@
             voices = window.speechSynthesis.getVoices();
           }
         }
+
+        const mProf = VOICE_REGIONAL_PROFILES[targetMaleId] || VOICE_REGIONAL_PROFILES.Puck;
+        const fProf = VOICE_REGIONAL_PROFILES[targetFemaleId] || VOICE_REGIONAL_PROFILES.Aoede;
+        const targetMaleLang = mProf.langCode || 'en-US';
+        const targetFemaleLang = fProf.langCode || 'en-US';
+
         if (!voices || voices.length === 0) {
           return { 
             maleVoice: null, femaleVoice: null, 
-            maleSettings: { pitch: 0.80, rate: 0.98 }, 
-            femaleSettings: { pitch: 1.15, rate: 1.0 }, 
+            maleSettings: { ...mProf, langCode: targetMaleLang }, 
+            femaleSettings: { ...fProf, langCode: targetFemaleLang }, 
             isSameVoice: true 
           };
         }
@@ -1426,59 +1427,88 @@
         const femalePool = pool.filter(v => isVoiceFemale(v.name));
         const malePool = pool.filter(v => isVoiceMale(v.name));
 
-        // 화자 ID별 최적의 시스템 보이스 검색 우선순위 및 오디오 프로필 매핑 (남성은 실제 남성 성우 우선 매칭)
-        const maleProfiles = {
-          Puck: { keywords: ['guy', 'christopher', 'david', 'alex', 'mark', 'google us english', 'brian'], pitch: 0.95, rate: 1.02, accent: 'us' },
-          Charon: { keywords: ['mark', 'david', 'james', 'tom', 'george', 'paul', 'charles'], pitch: 0.68, rate: 0.92, accent: 'us' },
-          Fenrir: { keywords: ['google uk english male', 'ryan', 'george', 'daniel', 'oliver', 'arthur', 'uk', 'gb', 'united kingdom'], pitch: 0.86, rate: 1.0, accent: 'uk' },
-          Orus: { keywords: ['william', 'james', 'australia', 'au', 'brian', 'david', 'lee'], pitch: 0.76, rate: 0.95, accent: 'au' },
-          Zephyr: { keywords: ['liam', 'richard', 'canada', 'ca', 'canadian'], pitch: 0.82, rate: 0.98, accent: 'ca' },
-          Ravi: { keywords: ['prabhat', 'ravi', 'india', 'in', 'indian'], pitch: 0.80, rate: 0.96, accent: 'in' }
+        // 국가 및 억양 일치도 기반 고정밀 보이스 선택기
+        // 영국 화자(Fenrir, Leda)가 아닌 경우 영국 음성(Google UK English, en-GB) 배정 원천 차단
+        const pickBestVoice = (profile, preferredPool, fallbackPool, isMaleRole, excludedVoice = null) => {
+          const targetLang = (profile.langCode || 'en-US').toLowerCase();
+          const isTargetBritish = targetLang.includes('gb') || (profile.country || '').includes('영국');
+
+          const sanitizeList = (list) => {
+            if (isTargetBritish) {
+              // 영국 화자일 경우 영국 음성(en-GB, uk)을 최우선 리스트에 배치
+              const ukFirst = list.filter(v => (v.lang || '').toLowerCase().includes('gb') || (v.name || '').toLowerCase().includes('uk'));
+              return ukFirst.length > 0 ? ukFirst : list;
+            }
+            // 미국/호주/캐나다/인도 등 비영국 화자인 경우 영국 음성(Google UK English, en-GB) 철저히 배제
+            return list.filter(v => {
+              const nameLower = (v.name || '').toLowerCase();
+              const langLower = (v.lang || '').toLowerCase();
+              return !nameLower.includes('google uk english') && !langLower.includes('gb') && !nameLower.includes('united kingdom');
+            });
+          };
+
+          const validPreferred = sanitizeList(preferredPool.filter(v => !excludedVoice || v.name !== excludedVoice.name));
+          const validFallback = sanitizeList(fallbackPool.filter(v => !excludedVoice || v.name !== excludedVoice.name));
+
+          // 1단계: 프로필 키워드 정확 매칭
+          for (const kw of (profile.keywords || [])) {
+            const match = validPreferred.find(v => v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw));
+            if (match) return match;
+          }
+
+          // 2단계: 국가/언어 코드 일치(en-US, en-AU, en-CA, en-IN 등) 매칭
+          const langMatch = validPreferred.find(v => (v.lang || '').toLowerCase().startsWith(targetLang.slice(0, 5)));
+          if (langMatch) return langMatch;
+
+          // 3단계: 선호 성별 풀에서 적합 음성
+          if (validPreferred.length > 0) return validPreferred[0];
+
+          // 4단계: 비영국 화자인데 풀에 전용 음성이 부족한 경우, 영국 음성으로의 오염을 원천 차단하고 비영국계(en-US/en-AU 등) 음성 매칭
+          if (!isTargetBritish) {
+            const nonUkVoices = pool.filter(v => {
+              const n = (v.name || '').toLowerCase();
+              const l = (v.lang || '').toLowerCase();
+              return !n.includes('google uk english') && !l.includes('gb') && !n.includes('united kingdom');
+            });
+
+            // 1순위: excludedVoice가 아닌 비영국 음성
+            const uniqueNonUk = nonUkVoices.find(v => !excludedVoice || v.name !== excludedVoice.name);
+            if (uniqueNonUk) return uniqueNonUk;
+
+            // 2순위: 시스템에 비영국 음성이 1개뿐인 경우(Chrome Windows: Google US English 1개뿐일 때), 영국 음성으로 왜곡되는 것보다 해당 음성을 공유하여 피치로 완벽 분리
+            if (nonUkVoices.length > 0) return nonUkVoices[0];
+          }
+
+          // 5단계: 폴백 풀에서 키워드 또는 언어 매칭
+          for (const kw of (profile.keywords || [])) {
+            const match = validFallback.find(v => v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw));
+            if (match) return match;
+          }
+
+          const fallbackLangMatch = validFallback.find(v => (v.lang || '').toLowerCase().startsWith(targetLang.slice(0, 5)));
+          if (fallbackLangMatch) return fallbackLangMatch;
+
+          if (validFallback.length > 0) return validFallback[0];
+
+          // 최종 예비: 제외 음성이 아닌 일반 음성
+          return pool.find(v => !excludedVoice || v.name !== excludedVoice.name) || pool[0];
         };
 
-        const femaleProfiles = {
-          Aoede: { keywords: ['jenny', 'aria', 'zira', 'samantha', 'google us', 'victoria'], pitch: 1.25, rate: 1.02, accent: 'us' },
-          Kore: { keywords: ['michelle', 'steffan', 'susan', 'ava', 'zira', 'google us'], pitch: 1.02, rate: 0.94, accent: 'us' },
-          Leda: { keywords: ['google uk english female', 'sonia', 'libby', 'hazel', 'emily', 'amy', 'uk', 'gb', 'united kingdom'], pitch: 1.20, rate: 0.98, accent: 'uk' },
-          Mimosa: { keywords: ['natasha', 'catherine', 'karen', 'australia', 'au', 'zira'], pitch: 1.10, rate: 0.96, accent: 'au' },
-          Clara: { keywords: ['clara', 'linda', 'canada', 'ca', 'canadian'], pitch: 1.16, rate: 1.0, accent: 'ca' },
-          Neerja: { keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian'], pitch: 1.10, rate: 0.97, accent: 'in' }
-        };
+        let male = pickBestVoice(mProf, malePool, pool, true);
+        let female = pickBestVoice(fProf, femalePool, pool, false, male);
 
-        const mProf = maleProfiles[targetMaleId] || maleProfiles.Puck;
-        const fProf = femaleProfiles[targetFemaleId] || femaleProfiles.Aoede;
-
-        // 1. 선택된 남성 화자 객체 탐색
-        let male = null;
-        for (const kw of mProf.keywords) {
-          male = malePool.find(v => v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw));
-          if (male) break;
-        }
-        if (!male) male = malePool[0] || pool[0];
-
-        // 2. 선택된 여성 화자 객체 탐색 (남성과 겹치지 않는 다른 객체 필수)
-        let female = null;
-        for (const kw of fProf.keywords) {
-          female = femalePool.find(v => (v.name.toLowerCase().includes(kw) || (v.lang || '').toLowerCase().includes(kw)) && (!male || v.name !== male.name));
-          if (female) break;
-        }
-        if (!female) {
-          female = femalePool.find(v => !male || v.name !== male.name);
-        }
-
-        // 보이스 풀 부족 시 fallback (서로 다른 인덱스 강제 배정)
-        if (!male && female) {
-          male = pool.find(v => v.name !== female.name) || female;
-        } else if (!female && male) {
-          female = pool.find(v => v.name !== male.name) || male;
-        } else if (!male && !female) {
-          male = pool[0];
-          female = pool.length > 1 ? pool[1] : pool[0];
-        }
-
-        // 동일 보이스 충돌 시 2차 회피 (다른 언어 음성까지 포함하여 반드시 다른 객체 할당)
+        // 동일 보이스 충돌 시 2차 회피 (단, 비영국 화자에게 영국 음성을 배정하는 악센트 왜곡 원천 방지)
         if (male && female && male.name === female.name) {
-          const alternative = pool.find(v => v.name !== male.name) || voices.find(v => v.name !== male.name);
+          const isFemaleTargetBritish = targetFemaleLang.includes('gb') || (fProf.country || '').includes('영국');
+          const alternative = pool.find(v => {
+            if (v.name === male.name) return false;
+            if (!isFemaleTargetBritish) {
+              const nl = (v.name || '').toLowerCase();
+              const ll = (v.lang || '').toLowerCase();
+              if (nl.includes('google uk english') || ll.includes('gb') || nl.includes('united kingdom')) return false;
+            }
+            return true;
+          });
           if (alternative) {
             female = alternative;
           }
@@ -1488,8 +1518,8 @@
         return { 
           maleVoice: male, 
           femaleVoice: female, 
-          maleSettings: mProf, 
-          femaleSettings: fProf, 
+          maleSettings: { ...mProf, langCode: targetMaleLang }, 
+          femaleSettings: { ...fProf, langCode: targetFemaleLang }, 
           isSameVoice: isSame 
         };
       };
@@ -1740,7 +1770,7 @@
             });
             await new Promise((resolve) => {
               const utter = new SpeechSynthesisUtterance(turn.speechText);
-              utter.lang = (currentVoice && currentVoice.lang) ? currentVoice.lang : langCode;
+              utter.lang = profile.langCode || (currentVoice && currentVoice.lang) || 'en-US';
               if (currentVoice) utter.voice = currentVoice;
 
               if (turn.isMale) {
@@ -1855,14 +1885,13 @@
         if (!synthRef.current) return;
         let voices = synthRef.current.getVoices();
         if (voices.length === 0) voices = window.speechSynthesis.getVoices();
-        const langCode = item.accent === 'uk' ? 'en-GB' : (item.accent === 'au' ? 'en-AU' : 'en-US');
         const { maleVoice, femaleVoice, isSameVoice } = resolveDisjointVoices(voices, aiMaleVoice, aiFemaleVoice, item.accent);
-        
         const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
         const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
+        const targetProfile = isMale ? maleProfile : femaleProfile;
 
         const utter = new SpeechSynthesisUtterance(targetLine);
-        utter.lang = langCode;
+        utter.lang = targetProfile.langCode || langCode;
         if (isMale) {
           if (maleVoice) utter.voice = maleVoice;
           utter.pitch = Math.min(maleProfile.pitch || 0.80, 0.72);
@@ -1981,9 +2010,10 @@
 
         const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
         const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
+        const targetProfile = isFemale ? femaleProfile : maleProfile;
 
         const utter = new SpeechSynthesisUtterance(text);
-        utter.lang = langCode;
+        utter.lang = targetProfile.langCode || langCode;
         if (targetVoice) utter.voice = targetVoice;
 
         if (isFemale) {
@@ -2960,13 +2990,14 @@ ${feedbackList.slice(-3).join('\n')}
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
                               const { maleVoice, maleSettings, isSameVoice } = resolveDisjointVoices(voices, chosenId, 'Aoede', 'us');
                               const utter = new SpeechSynthesisUtterance(sampleText);
+                              const profile = VOICE_REGIONAL_PROFILES[chosenId] || {};
+                              utter.lang = profile.langCode || (maleVoice && maleVoice.lang) || 'en-US';
                               if (maleVoice) {
                                 utter.voice = maleVoice;
-                                utter.lang = maleVoice.lang || 'en-US';
                               }
                               utter.pitch = maleSettings.pitch || 0.80; 
                               utter.rate = isSameVoice ? 0.88 : (maleSettings.rate || 0.98);
-                              showToast(`남성 목소리 재생 중: ${chosenId} (${maleVoice ? maleVoice.name : '시스템 남성 음성'})`, "info");
+                              showToast(`남성 목소리 재생 중: ${profile.flag || ''} ${chosenId} (${profile.accentName || '글로벌 원어민'})`, "info");
                               synthRef.current.speak(utter);
                             }}
                             className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-teal-800"
@@ -3019,13 +3050,14 @@ ${feedbackList.slice(-3).join('\n')}
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
                               const { femaleVoice, femaleSettings, isSameVoice } = resolveDisjointVoices(voices, 'Puck', chosenId, 'us');
                               const utter = new SpeechSynthesisUtterance(sampleText);
+                              const profile = VOICE_REGIONAL_PROFILES[chosenId] || {};
+                              utter.lang = profile.langCode || (femaleVoice && femaleVoice.lang) || 'en-US';
                               if (femaleVoice) {
                                 utter.voice = femaleVoice;
-                                utter.lang = femaleVoice.lang || 'en-US';
                               }
                               utter.pitch = femaleSettings.pitch || 1.15; 
                               utter.rate = isSameVoice ? 1.15 : (femaleSettings.rate || 1.0);
-                              showToast(`여성 목소리 재생 중: ${chosenId} (${femaleVoice ? femaleVoice.name : '시스템 여성 음성'})`, "info");
+                              showToast(`여성 목소리 재생 중: ${profile.flag || ''} ${chosenId} (${profile.accentName || '글로벌 원어민'})`, "info");
                               synthRef.current.speak(utter);
                             }}
                             className="skeuo-btn text-[10px] px-2 py-0.5 font-bold text-pink-800"
