@@ -909,7 +909,7 @@
           accentName: 'Indian English (Fast Syllable-timed)', 
           keywords: ['ravi', 'prabhat', 'india', 'in', 'indian'], 
           pitch: 1.02, rate: 1.14, 
-          sample: "Namaste! I am Ravi from New Delhi, India. I speak in fast, expressive, and articulate Indian English." 
+          sample: "Namaste! Dis is Ravi from New Delhi, India. Let me tell you, kindly listen to dis listening exam carefully, no problem at all, right?" 
         },
 
         Aoede: { 
@@ -952,7 +952,7 @@
           accentName: 'Indian English (Lively & Fluent)', 
           keywords: ['neerja', 'heera', 'veena', 'india', 'in', 'indian', 'priya'], 
           pitch: 1.34, rate: 1.12, 
-          sample: "Namaste and greetings! I am Neerja from Bangalore, India, speaking in lively and fluent Indian English." 
+          sample: "Namaste and greetings! Dis is Neerja from Bangalore, India. I am werry glad to practice wit you. It is quite simple, isn't it?" 
         }
       };
 
@@ -1052,6 +1052,55 @@
         text = text.replace(/^["'“”‘’\s]+|["'“”‘’\s]+$/g, '');
         text = text.replace(/\s+/g, ' ').trim();
         return text;
+      };
+
+      // [신규 고도화] 인도 글로벌 영어 음운 특성(Th-stopping, W/V 순치음, 음절 단위 리듬) 정밀 음향 합성기
+      const adaptTextForIndianAccent = (rawText) => {
+        if (!rawText) return "";
+        let s = rawText;
+
+        // 1. 기능어/대명사 th -> d 치환 (유성 치경 파열음화: the->de, this->dis, that->dat)
+        s = s.replace(/\bthe\b/gi, 'de');
+        s = s.replace(/\bthis\b/gi, 'dis');
+        s = s.replace(/\bthat\b/gi, 'dat');
+        s = s.replace(/\bthese\b/gi, 'dese');
+        s = s.replace(/\bthose\b/gi, 'dose');
+        s = s.replace(/\bthere\b/gi, 'dere');
+        s = s.replace(/\btheir\b/gi, 'deir');
+        s = s.replace(/\btheirs\b/gi, 'deirs');
+        s = s.replace(/\bthey\b/gi, 'dey');
+        s = s.replace(/\bthem\b/gi, 'dem');
+        s = s.replace(/\bthen\b/gi, 'den');
+        s = s.replace(/\bwith\b/gi, 'wit');
+        s = s.replace(/\bwithout\b/gi, 'witout');
+        s = s.replace(/\bwithin\b/gi, 'witin');
+
+        // 2. 내용어 th -> t 치환 (무성 치경 파열음화: think->tink, thirty->tirty, three->tree)
+        s = s.replace(/\bthink\b/gi, 'tink');
+        s = s.replace(/\bthinks\b/gi, 'tinks');
+        s = s.replace(/\bthinking\b/gi, 'tinking');
+        s = s.replace(/\bthought\b/gi, 'tot');
+        s = s.replace(/\bthank\b/gi, 'tank');
+        s = s.replace(/\bthanks\b/gi, 'tanks');
+        s = s.replace(/\bthree\b/gi, 'tree');
+        s = s.replace(/\bthird\b/gi, 'tird');
+        s = s.replace(/\bthirty\b/gi, 'tirty');
+        s = s.replace(/\bthousand\b/gi, 'tousand');
+        s = s.replace(/\bthing\b/gi, 'ting');
+        s = s.replace(/\bthings\b/gi, 'tings');
+        s = s.replace(/\bsomething\b/gi, 'someting');
+        s = s.replace(/\beverything\b/gi, 'everyting');
+        s = s.replace(/\bnothing\b/gi, 'noting');
+
+        // 3. 인도 특유의 v/w 순치음 뉘앙스
+        s = s.replace(/\bvery\b/gi, 'werry');
+        s = s.replace(/\bwelcome\b/gi, 'velcome');
+        s = s.replace(/\bwhat\b/gi, 'vhat');
+        s = s.replace(/\bwhy\b/gi, 'vhy');
+        s = s.replace(/\bwhen\b/gi, 'vhen');
+        s = s.replace(/\bwhere\b/gi, 'vhere');
+
+        return s;
       };
 
       // [신규 고도화] 대본 내 모든 변칙 화자 태그 정규화 및 남녀 1:1 교차 대화 턴(Turn) 완벽 분할 엔진
@@ -1854,7 +1903,10 @@
               isGoogleAi: false 
             });
             await new Promise((resolve) => {
-              const utter = new SpeechSynthesisUtterance(turn.speechText);
+              const isNativeIndianVoice = (currentVoice && ((currentVoice.lang || '').toLowerCase().includes('in') || (currentVoice.name || '').toLowerCase().includes('india') || (currentVoice.name || '').toLowerCase().includes('heera')));
+              const textToSpeak = (profile.country === '인도' && !isNativeIndianVoice) ? adaptTextForIndianAccent(turn.speechText) : turn.speechText;
+
+              const utter = new SpeechSynthesisUtterance(textToSpeak);
               utter.lang = profile.langCode || (currentVoice && currentVoice.lang) || 'en-US';
               if (currentVoice) utter.voice = currentVoice;
 
@@ -1978,8 +2030,11 @@
         const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
         const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
         const targetProfile = isMale ? maleProfile : femaleProfile;
+        const activeVoice = isMale ? maleVoice : femaleVoice;
+        const isNativeIndianVoice = (activeVoice && ((activeVoice.lang || '').toLowerCase().includes('in') || (activeVoice.name || '').toLowerCase().includes('india') || (activeVoice.name || '').toLowerCase().includes('heera')));
+        const textToSpeak = (targetProfile.country === '인도' && !isNativeIndianVoice) ? adaptTextForIndianAccent(targetLine) : targetLine;
 
-        const utter = new SpeechSynthesisUtterance(targetLine);
+        const utter = new SpeechSynthesisUtterance(textToSpeak);
         utter.lang = targetProfile.langCode || langCode;
         if (isMale) {
           if (maleVoice) utter.voice = maleVoice;
@@ -2100,8 +2155,10 @@
         const maleProfile = VOICE_REGIONAL_PROFILES[aiMaleVoice] || VOICE_REGIONAL_PROFILES.Puck;
         const femaleProfile = VOICE_REGIONAL_PROFILES[aiFemaleVoice] || VOICE_REGIONAL_PROFILES.Aoede;
         const targetProfile = isFemale ? femaleProfile : maleProfile;
+        const isNativeIndianVoice = (targetVoice && ((targetVoice.lang || '').toLowerCase().includes('in') || (targetVoice.name || '').toLowerCase().includes('india') || (targetVoice.name || '').toLowerCase().includes('heera')));
+        const textToSpeak = (targetProfile.country === '인도' && !isNativeIndianVoice) ? adaptTextForIndianAccent(text) : text;
 
-        const utter = new SpeechSynthesisUtterance(text);
+        const utter = new SpeechSynthesisUtterance(textToSpeak);
         utter.lang = targetProfile.langCode || langCode;
         if (targetVoice) utter.voice = targetVoice;
 
@@ -3078,8 +3135,11 @@ ${feedbackList.slice(-3).join('\n')}
                               }
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
                               const { maleVoice, maleSettings, isSameVoice } = resolveDisjointVoices(voices, chosenId, 'Aoede', 'us');
-                              const utter = new SpeechSynthesisUtterance(sampleText);
                               const profile = VOICE_REGIONAL_PROFILES[chosenId] || {};
+                              const isNativeIndianVoice = (maleVoice && ((maleVoice.lang || '').toLowerCase().includes('in') || (maleVoice.name || '').toLowerCase().includes('india') || (maleVoice.name || '').toLowerCase().includes('heera')));
+                              const textToSpeak = (profile.country === '인도' && !isNativeIndianVoice) ? adaptTextForIndianAccent(sampleText) : sampleText;
+
+                              const utter = new SpeechSynthesisUtterance(textToSpeak);
                               utter.lang = profile.langCode || (maleVoice && maleVoice.lang) || 'en-US';
                               if (maleVoice) {
                                 utter.voice = maleVoice;
@@ -3138,8 +3198,11 @@ ${feedbackList.slice(-3).join('\n')}
                               }
                               let voices = synthRef.current ? synthRef.current.getVoices() : [];
                               const { femaleVoice, femaleSettings, isSameVoice } = resolveDisjointVoices(voices, 'Puck', chosenId, 'us');
-                              const utter = new SpeechSynthesisUtterance(sampleText);
                               const profile = VOICE_REGIONAL_PROFILES[chosenId] || {};
+                              const isNativeIndianVoice = (femaleVoice && ((femaleVoice.lang || '').toLowerCase().includes('in') || (femaleVoice.name || '').toLowerCase().includes('india') || (femaleVoice.name || '').toLowerCase().includes('heera')));
+                              const textToSpeak = (profile.country === '인도' && !isNativeIndianVoice) ? adaptTextForIndianAccent(sampleText) : sampleText;
+
+                              const utter = new SpeechSynthesisUtterance(textToSpeak);
                               utter.lang = profile.langCode || (femaleVoice && femaleVoice.lang) || 'en-US';
                               if (femaleVoice) {
                                 utter.voice = femaleVoice;
